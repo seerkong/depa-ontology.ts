@@ -1,0 +1,20 @@
+{
+  "name": "depa-ontology-workspace",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "npm run test:datalog && npm run test:ontology && npm run test:server",
+    "test:datalog": "bun test packages/depa-datalog/__tests__",
+    "test:ontology": "npm test --workspace=depa-ontology",
+    "test:server": "npm test --workspace=depa-example-server",
+    "build:browser": "npm run build --workspace=depa-example-browser",
+    "test:e2e": "npm run test:e2e --workspace=depa-example-browser",
+    "test:e2e:ui": "npm run test:e2e:ui --workspace=depa-example-browser",
+    "install:browsers": "npm run install:browsers --workspace=depa-example-browser",
+    "dev:server": "npm run dev --workspace=depa-example-server",
+    "start:server": "npm run start --workspace=depa-example-server",
+    "dev:browser": "npm run dev --workspace=depa-example-browser",
+    "preview:browser": "npm run preview --workspace=depa-example-browser",
+    "pack:dry-run": "npm pack --workspace=depa-datalog --dry-run && npm pack --workspace=depa-ontology --dry-run"
+  }
+}

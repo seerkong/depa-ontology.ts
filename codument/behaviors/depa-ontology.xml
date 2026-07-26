@@ -1,0 +1,802 @@
+<behaviors capability="depa-ontology" version="1">
+  <requirement id="add-action-and-constraints-r-df9821a9a6">
+        <statement>系统 SHALL 支持为 Object Type 注册 Action（业务级可执行操作）。Action 由名称、参数 schema、以及一个将 Action 转换为一组 Mutation 的处理函数组成。Action 注册通过 `defineAction(runner, typeName, actionName, handler)` 完成。子类型 SHALL 继承父类型的 Action；子类型 SHALL 可以通过重新调用 `defineAction` 覆盖继承的 Action，并可在 handler 中通过 `callParentAction(ctx, actionName, params)` 调用父类型的原始 handler 以实现扩展（类似 super 调用）。执行时按最近祖先优先（MRO）解析 Action 定义。</statement>
+        <suite id="add-action-and-constraints-r-df9821a9a6-suite" name="Action 定义与注册">
+          <case id="add-action-and-constraints-r-df9821a9a6-c-e174a86f79" name="注册并执行 Action">
+            <given>已定义类型 `PurchaseOrder` 及属性 `status`(String)</given>
+            <when>调用 `defineAction(runner, &apos;PurchaseOrder&apos;, &apos;approve&apos;, handler)` 注册 Action；调用 `executeAction(runner, entityId, &apos;approve&apos;, params)` 执行</when>
+            <then>handler 被调用并返回一组 Mutation，系统按顺序执行这些 Mutation</then>
+          </case>
+          <case id="add-action-and-constraints-r-df9821a9a6-c-6400900846" name="对不存在的 Action 执行报错">
+            <given>类型 `PurchaseOrder` 未注册 `reject` Action</given>
+            <when>调用 `executeAction(runner, entityId, &apos;reject&apos;, {})`</when>
+            <then>系统抛出错误，提示 Action 不存在</then>
+          </case>
+          <case id="add-action-and-constraints-r-df9821a9a6-c-eda8145d60" name="Action 继承">
+            <given>类型 `Asset` 注册了 Action `decommission`；`ITAsset` 继承自 `Asset`</given>
+            <when>对 `ITAsset` 实例调用 `executeAction(runner, entityId, &apos;decommission&apos;, {})`</when>
+            <then>执行成功，使用从 `Asset` 继承的 Action 定义</then>
+          </case>
+          <case id="add-action-and-constraints-r-df9821a9a6-c-5f2470b9c3" name="子类型覆盖并扩展父类型 Action">
+            <given>类型 `Asset` 注册了 Action `decommission`，其 handler 返回 `[{mutation: &apos;setStatus&apos;, params: {status: &apos;decommissioned&apos;}}]`；`ITAsset` 继承自 `Asset`，且 `ITAsset` 有额外属性 `ip_address`</given>
+            <when>对 `ITAsset` 调用 `defineAction(runner, &apos;ITAsset&apos;, &apos;decommission&apos;, extendedHandler)` 覆盖该 Action；`extendedHandler` 内部调用 `callParentAction(ctx, &apos;decommission&apos;, params)` 获取父类 Mutation 列表，再追加 `[{mutation: &apos;clearIp&apos;, params: {}}]`</when>
+            <then>对 `ITAsset` 实例执行 `decommission` 时，先执行父类的 `setStatus` Mutation，再执行子类的 `clearIp` Mutation</then>
+          </case>
+          <case id="add-action-and-constraints-r-df9821a9a6-c-e47f6c8471" name="未覆盖时使用最近祖先的 Action">
+            <given>`Server` 继承自 `ITAsset` 继承自 `Asset`；`ITAsset` 覆盖了 `decommission` Action，`Server` 未覆盖</given>
+            <when>对 `Server` 实例执行 `decommission`</when>
+            <then>使用 `ITAsset` 的覆盖版本（最近祖先优先）</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-badccce342">
+        <statement>系统 SHALL 支持定义 Mutation（原子数据变更操作）。Mutation 由名称和执行函数组成，通过 `defineMutation(runner, typeName, mutationName, executor)` 注册。Action handler 返回的 Mutation 列表 SHALL 在单次事务语义下按顺序执行。</statement>
+        <suite id="add-action-and-constraints-r-badccce342-suite" name="Mutation 定义与原子执行">
+          <case id="add-action-and-constraints-r-badccce342-c-5d9114521c" name="定义并通过 Action 触发 Mutation">
+            <given>类型 `PurchaseOrder` 定义了 Mutation `setStatus` 和 `addAuditLog`；Action `approve` 的 handler 返回 `[{mutation: &apos;setStatus&apos;, params: {status: &apos;approved&apos;}}, {mutation: &apos;addAuditLog&apos;, params: {action: &apos;approve&apos;}}]`</given>
+            <when>执行 `approve` Action</when>
+            <then>`setStatus` 和 `addAuditLog` 按顺序执行</then>
+          </case>
+          <case id="add-action-and-constraints-r-badccce342-c-730e1183cb" name="Mutation 执行失败时回滚">
+            <given>Action `approve` 触发两个 Mutation</given>
+            <when>第二个 Mutation 执行失败</when>
+            <then>第一个 Mutation 的效果也被回滚，实体状态不变</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-f488b680ad">
+        <statement>系统 SHALL 支持在 Action 执行前后注册拦截器。拦截器通过 `addInterceptor(runner, typeName, actionName, phase, handler)` 注册，`phase` 为 `&apos;before&apos;` 或 `&apos;after&apos;`。`before` 拦截器可阻止 Action 执行（抛出错误）；`after` 拦截器在 Mutation 全部完成后执行。</statement>
+        <suite id="add-action-and-constraints-r-f488b680ad-suite" name="Action 拦截器（Interceptor）">
+          <case id="add-action-and-constraints-r-f488b680ad-c-ee809833b5" name="before 拦截器阻止 Action">
+            <given>类型 `PurchaseOrder` 的 `approve` Action 注册了 before 拦截器，校验 `status` 必须为 `pending`；某 PurchaseOrder 实例的 `status` 为 `approved`</given>
+            <when>调用 `executeAction(runner, entityId, &apos;approve&apos;, {})`</when>
+            <then>before 拦截器抛出错误，Action 不执行，实体状态不变</then>
+          </case>
+          <case id="add-action-and-constraints-r-f488b680ad-c-2baf857c24" name="after 拦截器执行后置逻辑">
+            <given>`approve` Action 注册了 after 拦截器（如发送通知）</given>
+            <when>Action 及其 Mutation 全部成功执行</when>
+            <then>after 拦截器被调用</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-667d22fd63">
+        <statement>系统 SHALL 支持定义条件约束：当实体满足某条件时，强制要求另一组属性/关系条件成立。通过 `defineConstraint(runner, typeName, constraintName, { when, then, message })` 注册。</statement>
+        <suite id="add-action-and-constraints-r-667d22fd63-suite" name="条件约束（Conditional Constraint）">
+          <case id="add-action-and-constraints-r-667d22fd63-c-c533832235" name="条件约束校验通过">
+            <given>类型 `Employee` 定义了约束：当 `status=&apos;active&apos;` 时 `end_date` 必须为空；某 Employee 实例 `status=&apos;active&apos;`, `end_date` 未设置</given>
+            <when>调用 `validateConstraints(runner, entityId)`</when>
+            <then>校验通过</then>
+          </case>
+          <case id="add-action-and-constraints-r-667d22fd63-c-620aa70545" name="条件约束校验失败">
+            <given>同上约束定义；某 Employee 实例 `status=&apos;active&apos;`, `end_date=&apos;2026-12-31&apos;`</given>
+            <when>调用 `validateConstraints(runner, entityId)`</when>
+            <then>返回约束违反错误，包含约束名称和 message</then>
+          </case>
+          <case id="add-action-and-constraints-r-667d22fd63-c-db3002bd56" name="写入时自动触发条件约束">
+            <given>同上约束定义</given>
+            <when>调用 `setProperty(runner, entityId, &apos;end_date&apos;, &apos;2026-12-31&apos;)` 且当前 `status=&apos;active&apos;`</when>
+            <then>系统抛出约束违反错误，属性未被写入</then>
+          </case>
+          <case id="add-action-and-constraints-r-667d22fd63-c-fb22f1f028" name="skipConstraints 跳过校验">
+            <given>同上约束定义</given>
+            <when>调用 `setProperty(runner, entityId, &apos;end_date&apos;, &apos;2026-12-31&apos;, { skipConstraints: true })`</when>
+            <then>属性被写入，不触发约束校验</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-55e50a999a">
+        <statement>系统 SHALL 支持定义跨实体约束：对某类型的所有实例或通过关系关联的实体集合施加聚合条件。通过 `defineConstraint(runner, typeName, constraintName, { scope: &apos;cross-entity&apos;, ... })` 注册。</statement>
+        <suite id="add-action-and-constraints-r-55e50a999a-suite" name="跨实体约束（Cross-Entity Constraint）">
+          <case id="add-action-and-constraints-r-55e50a999a-c-e2cfbd5943" name="唯一性约束">
+            <given>类型 `Department` 定义了跨实体约束：通过 `heads` 关系关联的 Employee 最多 1 个；某 Department 已有 1 个 head</given>
+            <when>尝试 `linkEntities(runner, deptId, &apos;heads&apos;, newEmployeeId)`</when>
+            <then>系统抛出约束违反错误</then>
+          </case>
+          <case id="add-action-and-constraints-r-55e50a999a-c-b418ff0cfe" name="跨实体约束显式校验">
+            <given>同上约束定义</given>
+            <when>调用 `validateConstraints(runner, deptId)`</when>
+            <then>系统检查该 Department 的 heads 关系数量并返回校验结果</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-90ea4dd615">
+        <statement>系统 SHALL 支持定义派生属性：其值由一个计算函数根据实体自身属性和/或关联实体属性自动计算。通过 `defineComputed(runner, typeName, attrName, computeFn)` 注册。派生属性 SHALL 在读取时按需计算（lazy），不持久化存储。</statement>
+        <suite id="add-action-and-constraints-r-90ea4dd615-suite" name="派生规则（Derived/Computed Property）">
+          <case id="add-action-and-constraints-r-90ea4dd615-c-c553fcdcce" name="定义并读取派生属性">
+            <given>类型 `PurchaseOrder` 定义了派生属性 `total`，计算逻辑为关联 LineItem 的 `unit_price × quantity` 之和</given>
+            <when>调用 `getEntityView(runner, poId)` 或 `getProperty(runner, poId, &apos;total&apos;)`</when>
+            <then>返回结果中包含 `total` 字段，值为实时计算结果</then>
+          </case>
+          <case id="add-action-and-constraints-r-90ea4dd615-c-9657bb3956" name="派生属性不可手动写入">
+            <given>`total` 是 `PurchaseOrder` 的派生属性</given>
+            <when>调用 `setProperty(runner, poId, &apos;total&apos;, 999)`</when>
+            <then>系统抛出错误，提示不可写入派生属性</then>
+          </case>
+          <case id="add-action-and-constraints-r-90ea4dd615-c-bdec6aa528" name="派生属性用于约束">
+            <given>类型 `Asset` 定义了派生属性 `risk_score`；定义了约束：`risk_score &gt; 80` 时 `requires_review` 必须为 `true`</given>
+            <when>约束校验时</when>
+            <then>系统先计算 `risk_score` 再评估约束条件</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-9aeb553907">
+        <statement>系统 SHALL 支持子类型继承父类型定义的所有约束。子类型 SHALL 可以定义额外约束，但 SHALL NOT 移除或放宽继承的约束。</statement>
+        <suite id="add-action-and-constraints-r-9aeb553907-suite" name="约束继承">
+          <case id="add-action-and-constraints-r-9aeb553907-c-a0dbc0ca25" name="子类型继承父类型约束">
+            <given>`Asset` 定义了约束 `name_not_empty`；`ITAsset` 继承自 `Asset`</given>
+            <when>对 `ITAsset` 实例调用 `validateConstraints`</when>
+            <then>`name_not_empty` 约束被校验</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-2e37069fcb">
+        <statement>系统 SHALL 在 `initSchema` 中新增 Action/Mutation/Constraint/Computed 所需的存储关系，且 SHALL 保持对现有无 Action/Constraint 的 schema 完全向后兼容。</statement>
+        <suite id="add-action-and-constraints-r-2e37069fcb-suite" name="Schema 扩展兼容">
+          <case id="add-action-and-constraints-r-2e37069fcb-c-6e0b095395" name="现有代码无需修改">
+            <given>现有代码不使用 Action/Constraint/Computed</given>
+            <when>升级到新版本后执行</when>
+            <then>所有现有 API 行为不变</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-057586a4ce">
+        <statement>系统 SHALL 在 cozo-lib-bun-viz 中新增一个独立 demo，展示 Action/Mutation 执行流程、拦截器、条件约束、跨实体约束和派生属性的使用。</statement>
+        <suite id="add-action-and-constraints-r-057586a4ce-suite" name="Action 与约束可视化 Demo">
+          <case id="add-action-and-constraints-r-057586a4ce-c-a2c4e1906b" name="加载 Action 与约束 Demo">
+            <given>用户访问 cozo-lib-bun-viz 的本体 demo 页面</given>
+            <when>选择 Action 与约束 demo</when>
+            <then>工作簿加载包含 Action 定义、约束定义的类型结构和示例数据；可执行展示 Action 触发、约束校验、派生属性计算的查询</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-a600356331">
+        <statement>系统 SHALL 在审批流 demo 的工作簿中，以独立 sheet 的形式展示 Action/Mutation/Interceptor/Constraint/Computed 的定义元数据，按类别分 sheet，便于查看规则与代码逻辑映射。</statement>
+        <suite id="add-action-and-constraints-r-a600356331-suite" name="Demo 行为层定义表格化展示">
+          <case id="add-action-and-constraints-r-a600356331-c-c9ef9b1ba9" name="行为层定义按类别展示">
+            <given>用户加载审批流 demo</given>
+            <when>用户查看工作簿中的定义 sheet</when>
+            <then>用户可以分别在 Action/Mutation/Interceptor/Constraint/Computed sheet 中看到对应定义的名称、归属类型、描述和规则摘要</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-action-and-constraints-r-29dca66814">
+        <statement>系统 SHALL 在审批流 demo 中利用 CozoDB time travel 能力记录审批状态/决策的时间轴。submit 时 SHALL 携带生效时间字段 `effective_at`；当审批通过后录入系统时 SHALL 使用该 `effective_at` 写入 time travel relation，并在查询结果中以表格形式展示时间轴。</statement>
+        <suite id="add-action-and-constraints-r-29dca66814-suite" name="Demo 使用 CozoDB 时间旅行展示审批时间轴">
+          <case id="add-action-and-constraints-r-29dca66814-c-3fc30969bf" name="生效时间写入 time travel relation 并可回看">
+            <given>用户对某审批请求执行 submit，并提供 future 的 `effective_at`</given>
+            <when>用户执行 approve 使该请求通过</when>
+            <then>系统将 &quot;approved&quot; 决策按 `effective_at` 写入 time travel relation；用户可以通过时间轴查询看到 submitted/approved 的历史记录</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-05d5a1d48a">
+        <statement>系统 SHALL 支持在 `om_type` 上定义单继承关系，每个类型最多有一个父类型（`parent_type`）。系统 SHALL 支持定义 mixin 接口，一个类型可以实现多个 mixin。mixin 仅提供属性定义的复用，不参与类型层级的 `isSubtypeOf` 判定。</statement>
+        <suite id="add-type-hierarchy-r-05d5a1d48a-suite" name="类型继承定义">
+          <case id="add-type-hierarchy-r-05d5a1d48a-c-4ddcab44ed" name="定义单继承类型">
+            <given>已存在类型 `Asset`</given>
+            <when>调用 `defineType(runner, &apos;ITAsset&apos;, &apos;IT资产&apos;, { parentType: &apos;Asset&apos; })`</when>
+            <then>`om_type` 中创建 `ITAsset` 记录，`parent_type` 为 `Asset`</then>
+          </case>
+          <case id="add-type-hierarchy-r-05d5a1d48a-c-fa3c2f7c52" name="定义多层继承链">
+            <given>已存在类型 `Asset` 和 `ITAsset`（parent_type=Asset）</given>
+            <when>调用 `defineType(runner, &apos;Server&apos;, &apos;服务器&apos;, { parentType: &apos;ITAsset&apos; })`</when>
+            <then>`Server` 的完整继承链为 `Server → ITAsset → Asset`</then>
+          </case>
+          <case id="add-type-hierarchy-r-05d5a1d48a-c-574dab0b92" name="定义 mixin 接口">
+            <given>已存在 mixin `Auditable`（定义了 `created_by`、`updated_at` 属性）</given>
+            <when>调用 `defineType(runner, &apos;Server&apos;, &apos;服务器&apos;, { parentType: &apos;ITAsset&apos;, mixins: [&apos;Auditable&apos;] })`</when>
+            <then>`Server` 继承 `ITAsset` 的属性和关系，同时获得 `Auditable` 的属性定义</then>
+          </case>
+          <case id="add-type-hierarchy-r-05d5a1d48a-c-1cefa6832c" name="防止循环继承">
+            <given>已存在类型 `A`（parent_type=B）和 `B`</given>
+            <when>调用 `defineType` 将 `B` 的 parent_type 设为 `A`</when>
+            <then>系统抛出错误，提示检测到循环继承</then>
+          </case>
+          <case id="add-type-hierarchy-r-05d5a1d48a-c-42f46936a8" name="父类型不存在">
+            <given>不存在类型 `NonExistent`</given>
+            <when>调用 `defineType(runner, &apos;Child&apos;, &apos;子类型&apos;, { parentType: &apos;NonExistent&apos; })`</when>
+            <then>系统抛出错误，提示父类型不存在</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-0cfc079cf8">
+        <statement>系统 SHALL 支持子类型自动继承父类型及 mixin 的所有属性定义。子类型 SHALL 可以收紧继承的属性约束（如将 `required: false` 改为 `required: true`），但 SHALL NOT 允许放宽约束或更改 `value_type`。</statement>
+        <suite id="add-type-hierarchy-r-0cfc079cf8-suite" name="属性继承与收紧约束">
+          <case id="add-type-hierarchy-r-0cfc079cf8-c-71f6aae9a0" name="子类型继承父类型属性">
+            <given>类型 `Asset` 定义了属性 `name`(String, required) 和 `location`(String, optional)；类型 `ITAsset` 继承自 `Asset`</given>
+            <when>调用 `getAttributeDefinitions(runner, &apos;ITAsset&apos;)`</when>
+            <then>返回结果包含 `name`(String, required) 和 `location`(String, optional)；还包含 `ITAsset` 自身定义的属性</then>
+          </case>
+          <case id="add-type-hierarchy-r-0cfc079cf8-c-c3cbc7b4e9" name="子类型收紧属性约束">
+            <given>类型 `Asset` 定义了属性 `location`(String, optional)；类型 `ITAsset` 继承自 `Asset`</given>
+            <when>调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;location&apos;, &apos;String&apos;, true)`</when>
+            <then>`ITAsset` 的 `location` 属性变为 required；`Asset` 的 `location` 属性仍为 optional</then>
+          </case>
+          <case id="add-type-hierarchy-r-0cfc079cf8-c-466a03ade5" name="禁止放宽约束">
+            <given>类型 `Asset` 定义了属性 `name`(String, required)；类型 `ITAsset` 继承自 `Asset`</given>
+            <when>调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;name&apos;, &apos;String&apos;, false)`</when>
+            <then>系统抛出错误，提示不允许将 required 从 true 放宽为 false</then>
+          </case>
+          <case id="add-type-hierarchy-r-0cfc079cf8-c-a4d46ec80d" name="禁止更改属性类型">
+            <given>类型 `Asset` 定义了属性 `name`(String)；类型 `ITAsset` 继承自 `Asset`</given>
+            <when>调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;name&apos;, &apos;Number&apos;, true)`</when>
+            <then>系统抛出错误，提示不允许更改继承属性的 value_type</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-eb4ceda4b5">
+        <statement>系统 SHALL 支持子类型自动继承父类型上定义的关系。当 `om_rel_def` 中 `from_type` 或 `to_type` 为某类型时，该类型的所有子类型 SHALL 自动适用该关系定义。`validateRelation` SHALL 递归检查类型继承链。</statement>
+        <suite id="add-type-hierarchy-r-eb4ceda4b5-suite" name="关系继承">
+          <case id="add-type-hierarchy-r-eb4ceda4b5-c-a5c7f6a23f" name="子类型继承父类型的出边关系">
+            <given>关系 `owned_by` 定义为 `Asset → Organization`；`ITAsset` 继承自 `Asset`</given>
+            <when>调用 `linkEntities(runner, &apos;server-01&apos;, &apos;owned_by&apos;, &apos;org-01&apos;)` 其中 `server-01` 类型为 `ITAsset`</when>
+            <then>关系创建成功，`validateRelation` 通过</then>
+          </case>
+          <case id="add-type-hierarchy-r-eb4ceda4b5-c-575d29f4f6" name="子类型继承父类型的入边关系">
+            <given>关系 `manages` 定义为 `Person → Asset`；`Server` 继承自 `ITAsset` 继承自 `Asset`</given>
+            <when>调用 `linkEntities(runner, &apos;admin-01&apos;, &apos;manages&apos;, &apos;server-01&apos;)` 其中 `server-01` 类型为 `Server`</when>
+            <then>关系创建成功</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-ce0fbf82b5">
+        <statement>系统 SHALL 支持按父类型查询时返回所有子类型的实例。`findByType` 默认包含子类型实例，可通过 `exact: true` 选项仅查询精确类型。`aggregateByType` 同样支持多态聚合。</statement>
+        <suite id="add-type-hierarchy-r-ce0fbf82b5-suite" name="多态查询">
+          <case id="add-type-hierarchy-r-ce0fbf82b5-c-6f5dfddff3" name="findByType 默认多态查询">
+            <given>存在 `Asset` 类型实例 2 个，`ITAsset` 实例 3 个，`Server` 实例 1 个；`ITAsset` 继承自 `Asset`，`Server` 继承自 `ITAsset`</given>
+            <when>调用 `findByType(runner, &apos;Asset&apos;)`</when>
+            <then>返回 6 个实例（2 + 3 + 1）</then>
+          </case>
+          <case id="add-type-hierarchy-r-ce0fbf82b5-c-a7cb2fbfdb" name="findByType 精确查询">
+            <given>同上数据</given>
+            <when>调用 `findByType(runner, &apos;Asset&apos;, {}, { exact: true })`</when>
+            <then>仅返回 2 个 `Asset` 类型实例</then>
+          </case>
+          <case id="add-type-hierarchy-r-ce0fbf82b5-c-8d5f172773" name="aggregateByType 多态聚合">
+            <given>`Asset` 及其子类型实例均有 `value` 属性</given>
+            <when>调用 `aggregateByType(runner, &apos;Asset&apos;, &apos;value&apos;, &apos;sum&apos;)`</when>
+            <then>返回所有 Asset 及子类型实例的 value 总和</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-2f75e6f5e0">
+        <statement>系统 SHALL 提供查询类型继承关系的 API：`getTypeHierarchy` 返回完整继承树，`getAncestors` 返回祖先链，`getDescendants` 返回所有后代类型，`isSubtypeOf` 判断类型关系。</statement>
+        <suite id="add-type-hierarchy-r-2f75e6f5e0-suite" name="继承链查询 API">
+          <case id="add-type-hierarchy-r-2f75e6f5e0-c-40fe3dbcc6" name="获取完整继承树">
+            <given>存在继承链 `Server → ITAsset → Asset` 和 `Vehicle → Asset`</given>
+            <when>调用 `getTypeHierarchy(runner)`</when>
+            <then>返回以根类型为起点的树结构，包含所有类型及其子类型</then>
+          </case>
+          <case id="add-type-hierarchy-r-2f75e6f5e0-c-0cd0adcbec" name="获取祖先链">
+            <given>存在继承链 `Server → ITAsset → Asset`</given>
+            <when>调用 `getAncestors(runner, &apos;Server&apos;)`</when>
+            <then>返回 `[&apos;ITAsset&apos;, &apos;Asset&apos;]`（从近到远）</then>
+          </case>
+          <case id="add-type-hierarchy-r-2f75e6f5e0-c-d480dcad8d" name="获取后代类型">
+            <given>存在继承链 `Server → ITAsset → Asset` 和 `Laptop → ITAsset`</given>
+            <when>调用 `getDescendants(runner, &apos;Asset&apos;)`</when>
+            <then>返回 `[&apos;ITAsset&apos;, &apos;Server&apos;, &apos;Laptop&apos;]`</then>
+          </case>
+          <case id="add-type-hierarchy-r-2f75e6f5e0-c-eb355bf810" name="判断子类型关系">
+            <given>存在继承链 `Server → ITAsset → Asset`</given>
+            <when>调用 `isSubtypeOf(runner, &apos;Server&apos;, &apos;Asset&apos;)`</when>
+            <then>返回 `true`</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-47b1a118d5">
+        <statement>系统 SHALL 保持对现有无继承 schema 的完全向后兼容。`om_type` 表新增 `parent_type` 列默认为 `null`。现有 `defineType(runner, name, description)` 调用签名保持不变，新签名通过第四个 options 参数传入 `parentType` 和 `mixins`。`initSchema` SHALL 新增 `om_mixin` 和 `om_type_mixin` 存储关系。</statement>
+        <suite id="add-type-hierarchy-r-47b1a118d5-suite" name="Schema 迁移兼容">
+          <case id="add-type-hierarchy-r-47b1a118d5-c-6e0b095395" name="现有代码无需修改">
+            <given>现有代码调用 `defineType(runner, &apos;Supplier&apos;, &apos;供应商&apos;)`</given>
+            <when>升级到新版本后执行</when>
+            <then>行为与之前完全一致，`parent_type` 为 null</then>
+          </case>
+          <case id="add-type-hierarchy-r-47b1a118d5-c-39940dd136" name="initSchema 创建新关系">
+            <given>legacy source did not declare this GWT field</given>
+            <when>调用 `initSchema(runner)`</when>
+            <then>除现有 6 张表外，额外创建 `om_mixin`（mixin 定义）和 `om_type_mixin`（类型-mixin 关联）</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-e39c4f8fff">
+        <statement>系统 SHALL 在 cozo-lib-bun-viz 中新增一个 IT 资产管理 demo，展示类型继承链、多态查询、schema 继承图。demo 包含 `Asset → ITAsset → Server/Laptop` 和 `Asset → Vehicle` 的继承结构，以及 mixin `Auditable` 的使用。</statement>
+        <suite id="add-type-hierarchy-r-e39c4f8fff-suite" name="继承可视化 Demo">
+          <case id="add-type-hierarchy-r-e39c4f8fff-c-81e4ae1efc" name="加载继承 Demo">
+            <given>用户访问 cozo-lib-bun-viz 的本体 demo 页面</given>
+            <when>选择 &quot;IT资产管理（继承）&quot; demo</when>
+            <then>工作簿加载包含继承关系的类型定义、属性定义、实体数据；schema 图中展示类型继承关系（用不同样式的边区分继承和普通关系）</then>
+          </case>
+          <case id="add-type-hierarchy-r-e39c4f8fff-c-4be9f3c73e" name="多态查询展示">
+            <given>已加载 IT 资产管理 demo 数据</given>
+            <when>执行 &quot;按父类型查询所有资产&quot; 查询</when>
+            <then>结果表格包含 Asset、ITAsset、Server、Laptop、Vehicle 的所有实例；每行显示实例的实际类型</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-afc46ce0bc">
+        <statement>系统 SHALL 支持为属性定义与关系定义写入可选的 `description` 文本，用于承载业务语义说明。该能力 SHALL 与现有 schema 向后兼容：不要求对既有 `om_attr_def` / `om_rel_def` 做 schema 迁移。</statement>
+        <suite id="add-type-hierarchy-r-afc46ce0bc-suite" name="属性与关系描述字段">
+          <case id="add-type-hierarchy-r-afc46ce0bc-c-8b20b6849a" name="写入并读取属性 description">
+            <given>已定义类型 `Asset`</given>
+            <when>调用 `defineAttribute(runner, &apos;Asset&apos;, &apos;asset_tag&apos;, &apos;String&apos;, true, &apos;资产编号&apos;)`</when>
+            <then>`getAttributeDefinitions(runner, &apos;Asset&apos;).get(&apos;asset_tag&apos;)` 包含 `description=&apos;资产编号&apos;`</then>
+          </case>
+          <case id="add-type-hierarchy-r-afc46ce0bc-c-070e244a85" name="继承链上的 description 优先级">
+            <given>`Asset` 定义属性 `name` description 为 &quot;资产名称&quot;；`ITAsset` 继承自 `Asset` 并定义同名属性 `name` description 为 &quot;IT资产名称&quot;</given>
+            <when>调用 `getAttributeDefinitions(runner, &apos;Server&apos;)`（其中 `Server → ITAsset → Asset`）</when>
+            <then>`name` 的 `description` 为 &quot;IT资产名称&quot;</then>
+          </case>
+          <case id="add-type-hierarchy-r-afc46ce0bc-c-18bb70938c" name="写入关系 description">
+            <given>已定义类型 `Asset`</given>
+            <when>调用 `defineRelation(runner, &apos;depends_on&apos;, &apos;Asset&apos;, &apos;Asset&apos;, true, &apos;依赖关系&apos;)`</when>
+            <then>系统保存该关系的 description</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-type-hierarchy-r-d2626433c1">
+        <statement>系统 SHALL 将本次新增示例（cozo-lib-bun CLI demo 与 cozo-lib-bun-viz IT 资产 demo）中的类型描述改为中文，并在属性定义与关系定义中提供中文 description。 系统 SHOULD 将 cozo-lib-bun-viz 中所有本体 demo（采购、人力、CRM、IT 资产）统一为相同列结构，并确保 `description` 永远位于最后一列。</statement>
+        <suite id="add-type-hierarchy-r-d2626433c1-suite" name="Demo 使用中文描述">
+          <case id="add-type-hierarchy-r-d2626433c1-c-a9fcafd0e5" name="可视化 demo 表结构包含 description 列">
+            <given>用户加载 &quot;IT资产管理（继承）&quot; demo</given>
+            <when>查看工作簿的 &quot;属性定义&quot; 与 &quot;关系定义&quot; sheet</when>
+            <then>两个 sheet 的列中包含 `description`；行数据中的 description 为中文</then>
+          </case>
+          <case id="add-type-hierarchy-r-d2626433c1-c-c753e7cf5d" name="采购/人力/CRM demo 表结构包含 description 列">
+            <given>用户加载采购、人力或 CRM demo</given>
+            <when>查看工作簿的 &quot;属性定义&quot; 与 &quot;关系定义&quot; sheet</when>
+            <then>两个 sheet 的列中包含 `description`</then>
+          </case>
+          <case id="add-type-hierarchy-r-d2626433c1-c-bd3179517c" name="类型/属性/关系 description 均为最后一列">
+            <given>用户加载任意本体 demo</given>
+            <when>查看 &quot;类型定义&quot;、&quot;属性定义&quot;、&quot;关系定义&quot; sheet 的列顺序</when>
+            <then>`description` 始终是最后一列</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-c5324e1577">
+        <statement>系统 SHALL 在 `OmValueType` 中新增 `&apos;Validity&apos;` 类型，用于声明具有时间语义的属性。`defineAttribute` SHALL 支持 `value_type: &apos;Validity&apos;`。`om_attr_def` 关系 SHALL 能存储该类型。</statement>
+        <suite id="add-temporal-dimension-r-c5324e1577-suite" name="Temporal 属性类型支持">
+          <case id="add-temporal-dimension-r-c5324e1577-c-9d809f279c" name="定义 Validity 类型属性">
+            <given>已定义类型 `Employee`</given>
+            <when>调用 `defineAttribute(runner, &apos;Employee&apos;, &apos;valid_from&apos;, &apos;Validity&apos;, true)`</when>
+            <then>属性定义成功，`om_attr_def` 中记录 `value_type = &apos;Validity&apos;`</then>
+          </case>
+          <case id="add-temporal-dimension-r-c5324e1577-c-9fed0ae753" name="设置 Validity 类型属性值">
+            <given>`Employee` 有 `valid_from: Validity` 属性</given>
+            <when>调用 `setProperty(runner, entityId, &apos;valid_from&apos;, &apos;2026-01-01T00:00:00Z&apos;)`</when>
+            <then>属性值被写入，CozoDB 将其存储为 Validity 类型</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-e3582191f3">
+        <statement>系统 SHALL 将 `om_property` 关系改造为 bi-temporal 结构：`om_property { entity_id, attr_name, valid_time: Validity =&gt; value, tx_time: String }`。`valid_time` 为业务生效时间（使用 CozoDB Validity 作为最后一个 key 列），`tx_time` 为系统记录时间（ISO-8601 字符串）。每次属性写入 SHALL 产生一条新的时间版本记录。</statement>
+        <suite id="add-temporal-dimension-r-e3582191f3-suite" name="Bi-temporal 属性历史（om_property 改造）">
+          <case id="add-temporal-dimension-r-e3582191f3-c-1750478c50" name="写入属性自动记录时间版本">
+            <given>已定义类型 `Employee` 及属性 `department`(String)；实体 `emp1` 的 `department` 当前值为 `&apos;Engineering&apos;`</given>
+            <when>调用 `setProperty(runner, &apos;emp1&apos;, &apos;department&apos;, &apos;Product&apos;, { validTime: &apos;2026-06-01T00:00:00Z&apos; })`</when>
+            <then>`om_property` 中新增一条记录：`entity_id=&apos;emp1&apos;, attr_name=&apos;department&apos;, valid_time=&apos;2026-06-01&apos;, value=&apos;Product&apos;, tx_time=&lt;当前系统时间&gt;`；之前的 `&apos;Engineering&apos;` 记录仍然保留</then>
+          </case>
+          <case id="add-temporal-dimension-r-e3582191f3-c-709fe28aeb" name="不指定 validTime 时使用当前时间">
+            <given>已定义类型 `Employee` 及属性 `name`(String)</given>
+            <when>调用 `setProperty(runner, &apos;emp1&apos;, &apos;name&apos;, &apos;Alice&apos;)` 不传 validTime</when>
+            <then>系统使用当前时间作为 `valid_time` 和 `tx_time`</then>
+          </case>
+          <case id="add-temporal-dimension-r-e3582191f3-c-929540a749" name="读取属性默认返回最新有效值">
+            <given>`emp1` 的 `department` 有两条历史记录：`Engineering@2026-01` 和 `Product@2026-06`</given>
+            <when>调用 `getProperty(runner, &apos;emp1&apos;, &apos;department&apos;)`（不指定时间）</when>
+            <then>返回最新有效值 `&apos;Product&apos;`</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-8f4cbddd2e">
+        <statement>系统 SHALL 提供 `getPropertyHistory(runner, entityId, attrName, options?)` API，返回指定属性的所有时间版本记录，按 `valid_time` 排序。`options` 可选参数包括 `{ from?: string, to?: string }` 用于时间范围过滤。</statement>
+        <suite id="add-temporal-dimension-r-8f4cbddd2e-suite" name="属性历史查询">
+          <case id="add-temporal-dimension-r-8f4cbddd2e-c-209f5e2a0d" name="查询属性完整历史">
+            <given>`emp1` 的 `department` 有三条历史记录</given>
+            <when>调用 `getPropertyHistory(runner, &apos;emp1&apos;, &apos;department&apos;)`</when>
+            <then>返回数组，每条包含 `{ value, valid_time, tx_time }`，按 valid_time 升序排列</then>
+          </case>
+          <case id="add-temporal-dimension-r-8f4cbddd2e-c-5c18fbe678" name="按时间范围过滤历史">
+            <given>`emp1` 的 `department` 有 2025-01、2025-06、2026-01 三条记录</given>
+            <when>调用 `getPropertyHistory(runner, &apos;emp1&apos;, &apos;department&apos;, { from: &apos;2025-05&apos;, to: &apos;2025-12&apos; })`</when>
+            <then>仅返回 2025-06 的记录</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-be76ba799b">
+        <statement>系统 SHALL 提供 `getPropertyAsOf(runner, entityId, attrName, timestamp)` API，利用 CozoDB 的 `@ timestamp` 语法返回指定时间点的属性值。系统 SHALL 提供 `getEntityViewAsOf(runner, entityId, timestamp)` API，返回实体在指定时间点的完整快照（所有属性的当时值）。</statement>
+        <suite id="add-temporal-dimension-r-be76ba799b-suite" name="时间点快照查询（As-Of Query）">
+          <case id="add-temporal-dimension-r-be76ba799b-c-4ebf311af5" name="查询历史时间点的属性值">
+            <given>`emp1` 的 `department` 在 2025-01 为 `Engineering`，2026-01 变更为 `Product`</given>
+            <when>调用 `getPropertyAsOf(runner, &apos;emp1&apos;, &apos;department&apos;, &apos;2025-06-01T00:00:00Z&apos;)`</when>
+            <then>返回 `&apos;Engineering&apos;`（2025-06 时的有效值）</then>
+          </case>
+          <case id="add-temporal-dimension-r-be76ba799b-c-58cc37e783" name="查询实体完整快照">
+            <given>`emp1` 在 2025-06 时有 `name=&apos;Alice&apos;`, `department=&apos;Engineering&apos;`, `role=&apos;IC&apos;`</given>
+            <when>调用 `getEntityViewAsOf(runner, &apos;emp1&apos;, &apos;2025-06-01T00:00:00Z&apos;)`</when>
+            <then>返回包含所有属性在该时间点有效值的完整视图</then>
+          </case>
+          <case id="add-temporal-dimension-r-be76ba799b-c-bf2650ce9c" name="查询未来时间点返回最新已知值">
+            <given>`emp1` 最新记录为 2026-01</given>
+            <when>调用 `getPropertyAsOf(runner, &apos;emp1&apos;, &apos;department&apos;, &apos;2030-01-01T00:00:00Z&apos;)`</when>
+            <then>返回 2026-01 的值（CozoDB Validity 的 as-of 语义）</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-7cb8f3178a">
+        <statement>系统 SHALL 将 `om_edge` 关系改造为支持有效期：`om_edge { from_id, rel_name, to_id, valid_time: Validity =&gt; props, tx_time: String }`。`linkEntities` SHALL 接受可选的 `validTime` 参数。系统 SHALL 提供 `getNeighborsAsOf(runner, entityId, relName, timestamp)` 查询指定时间点的关系。</statement>
+        <suite id="add-temporal-dimension-r-7cb8f3178a-suite" name="Temporal 关系（边的有效期）">
+          <case id="add-temporal-dimension-r-7cb8f3178a-c-26324bf676" name="创建带有效期的关系">
+            <given>已定义关系 `belongs_to`（Employee → Department）</given>
+            <when>调用 `linkEntities(runner, &apos;emp1&apos;, &apos;belongs_to&apos;, &apos;dept-eng&apos;, { validTime: &apos;2025-01-01T00:00:00Z&apos; })`</when>
+            <then>`om_edge` 中记录该关系及其 valid_time</then>
+          </case>
+          <case id="add-temporal-dimension-r-7cb8f3178a-c-aef1129139" name="查询某时间点的关系">
+            <given>`emp1` 在 2025-01 属于 `dept-eng`，2026-01 转到 `dept-product`</given>
+            <when>调用 `getNeighborsAsOf(runner, &apos;emp1&apos;, &apos;belongs_to&apos;, &apos;2025-06-01T00:00:00Z&apos;)`</when>
+            <then>返回 `dept-eng`</then>
+          </case>
+          <case id="add-temporal-dimension-r-7cb8f3178a-c-709fe28aeb" name="不指定 validTime 时使用当前时间">
+            <given>已定义关系 `belongs_to`</given>
+            <when>调用 `linkEntities(runner, &apos;emp1&apos;, &apos;belongs_to&apos;, &apos;dept-eng&apos;)` 不传 validTime</when>
+            <then>系统使用当前时间作为 valid_time</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-e99518acbf">
+        <statement>系统 SHALL 提供 `getEdgeHistory(runner, fromId, relName, toId?, options?)` API，返回指定关系的所有时间版本。当 `toId` 省略时返回该实体在该关系上的所有历史邻居。</statement>
+        <suite id="add-temporal-dimension-r-e99518acbf-suite" name="关系历史查询">
+          <case id="add-temporal-dimension-r-e99518acbf-c-97baac31e2" name="查询关系完整历史">
+            <given>`emp1` 的 `belongs_to` 关系有多条历史记录（不同部门）</given>
+            <when>调用 `getEdgeHistory(runner, &apos;emp1&apos;, &apos;belongs_to&apos;)`</when>
+            <then>返回所有历史关系记录，按 valid_time 排序</then>
+          </case>
+          <case id="add-temporal-dimension-r-e99518acbf-c-b3075f9005" name="查询特定关系对的历史">
+            <given>`emp1` 与 `dept-eng` 的 `belongs_to` 关系有多次变更</given>
+            <when>调用 `getEdgeHistory(runner, &apos;emp1&apos;, &apos;belongs_to&apos;, &apos;dept-eng&apos;)`</when>
+            <then>仅返回 emp1→dept-eng 的历史记录</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-5a200f2127">
+        <statement>系统 SHALL 确保 Action/Mutation/Constraint 与 temporal 属性协同工作。ActionContext 中的 `getProperty` 和 `setProperty` SHALL 支持 temporal 参数。约束校验 SHALL 基于当前有效值（latest）执行。</statement>
+        <suite id="add-temporal-dimension-r-5a200f2127-suite" name="Temporal 与行为层集成">
+          <case id="add-temporal-dimension-r-5a200f2127-c-c42599ba83" name="Action 中使用 temporal setProperty">
+            <given>Action `transfer` 的 handler 调用 `ctx.setProperty(&apos;department&apos;, &apos;Product&apos;, { validTime: futureDate })`</given>
+            <when>执行该 Action</when>
+            <then>属性以指定的 validTime 写入 om_property</then>
+          </case>
+          <case id="add-temporal-dimension-r-5a200f2127-c-00b6aa22e9" name="约束基于最新有效值校验">
+            <given>条件约束：当 `status=&apos;active&apos;` 时 `end_date` 必须为空；实体最新有效 `status` 为 `&apos;active&apos;`</given>
+            <when>调用 `setProperty(runner, entityId, &apos;end_date&apos;, &apos;2026-12-31&apos;)`</when>
+            <then>约束校验基于最新有效的 `status` 值触发，抛出违反错误</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-47b1a118d5">
+        <statement>系统 SHALL 在 `initSchema` 中自动检测并迁移旧版 `om_property`（无 valid_time/tx_time）和 `om_edge`（无 valid_time/tx_time）到新的 bi-temporal 结构。迁移时旧数据的 valid_time 和 tx_time SHALL 使用迁移执行时的当前时间。</statement>
+        <suite id="add-temporal-dimension-r-47b1a118d5-suite" name="Schema 迁移兼容">
+          <case id="add-temporal-dimension-r-47b1a118d5-c-a820232bc7" name="旧 schema 自动迁移">
+            <given>数据库中存在旧版 `om_property { entity_id, attr_name =&gt; value }`</given>
+            <when>调用 `initSchema(runner)` 使用新版代码</when>
+            <then>系统检测到旧 schema，将数据迁移到新结构，旧数据获得当前时间作为 valid_time 和 tx_time；迁移后所有现有 API 正常工作</then>
+          </case>
+          <case id="add-temporal-dimension-r-47b1a118d5-c-7ce3d7551c" name="新 schema 无需迁移">
+            <given>数据库中已是新版 bi-temporal schema</given>
+            <when>调用 `initSchema(runner)`</when>
+            <then>无迁移操作，正常初始化</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-746bdb063c">
+        <statement>系统 SHALL 将 approval-flow demo 中手写的 raw CozoDB 时间旅行代码替换为 om 层 temporal API。demo 中的 `approval_request_ledger` 关系、`:put` 写入、`@ $as_of` 查询 SHALL 全部改为使用 `setProperty`/`getPropertyAsOf`/`getPropertyHistory` 等 om API。</statement>
+        <suite id="add-temporal-dimension-r-746bdb063c-suite" name="重构 approval-flow Demo 使用 Temporal API">
+          <case id="add-temporal-dimension-r-746bdb063c-c-067cb65f7a" name="approval-flow 使用 om temporal API">
+            <given>用户加载 approval-flow demo</given>
+            <when>执行 submit → approve 流程</when>
+            <then>时间轴数据通过 om temporal API 写入和查询，不再使用 raw CozoDB 脚本；时间轴展示结果与重构前一致</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-temporal-dimension-r-a43c139ce9">
+        <statement>系统 SHALL 新增一个独立的组织架构变迁 demo（org-timeline），展示：部门调整、人员调动的时间轴，以及任意时间点的组织架构快照查询。</statement>
+        <suite id="add-temporal-dimension-r-a43c139ce9-suite" name="新增组织架构 Temporal Demo">
+          <case id="add-temporal-dimension-r-a43c139ce9-c-26291dc859" name="加载组织架构 temporal demo">
+            <given>用户访问 viz 的 demo 列表</given>
+            <when>选择 org-timeline demo</when>
+            <then>工作簿加载包含 Department/Employee/Team 类型定义、人员调动历史数据；可执行时间点快照查询，查看任意历史时刻的组织架构</then>
+          </case>
+          <case id="add-temporal-dimension-r-a43c139ce9-c-f312513ed0" name="组织架构时间轴查询">
+            <given>demo 中 Alice 在 2025-01 属于 Engineering，2025-07 调到 Product，2026-01 调到 Management</given>
+            <when>执行 &quot;2025-06 组织架构快照&quot; 查询</when>
+            <then>结果显示 Alice 属于 Engineering；执行 &quot;2026-02 组织架构快照&quot; 查询时显示 Alice 属于 Management</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-fa3db11ccc">
+        <statement>系统 SHALL 支持为本体 schema 维护版本状态与历史记录。版本化元数据 SHALL 与现有 `om_type`/`om_attr_def`/`om_rel_def` 等 schema 关系并存，且不要求将版本号加入现有 schema 关系的 key 列（避免破坏性变更）。</statement>
+        <suite id="add-schema-versioning-permission-integration-r-fa3db11ccc-suite" name="Schema 版本化元数据">
+          <case id="add-schema-versioning-permission-integration-r-fa3db11ccc-c-b8492d295b" name="初始化 schema 时创建版本化元数据">
+            <given>一个新的空数据库实例</given>
+            <when>调用 `initSchema(runner)`</when>
+            <then>系统创建版本化元数据关系（如 schema state / version / migration / snapshot / alias 映射）；设定 `current_version = 1`</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-fa3db11ccc-c-873d6e4b68" name="查询当前 schema 状态">
+            <given>数据库已初始化 schema</given>
+            <when>调用 `getSchemaState(runner)`</when>
+            <then>返回 `{ currentVersion, checksum }`</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-06553bd84e">
+        <statement>系统 SHALL 支持以结构化迁移规范（migration spec）应用 schema 变更，并记录迁移历史。迁移记录 SHALL 可用于审计与回滚。</statement>
+        <suite id="add-schema-versioning-permission-integration-r-06553bd84e-suite" name="Schema 迁移（Migration）记录与应用">
+          <case id="add-schema-versioning-permission-integration-r-06553bd84e-c-27704ae533" name="应用迁移并记录历史">
+            <given>当前 `current_version = 1`</given>
+            <when>调用 `applySchemaMigration(runner, spec)` 将 schema 升级到版本 2</when>
+            <then>系统更新 `current_version = 2`；系统写入一条迁移记录（from/to/applied_at/status/summary）；系统为目标版本写入 schema snapshot</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-06553bd84e-c-9cad5308c3" name="多版本共存通过别名解析实现">
+            <given>schema 从 v1 演进到 v2，存在重命名</given>
+            <when>使用旧名称与新名称调用 API（读/写）</when>
+            <then>系统通过别名映射解析到 canonical 名称；API 对外返回 canonical 名称</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-6a5729d39f">
+        <statement>系统 SHALL 支持类型/关系/属性的重命名，并保证旧名称在升级后仍可用于读写（通过别名解析）。</statement>
+        <suite id="add-schema-versioning-permission-integration-r-6a5729d39f-suite" name="重命名兼容（Alias）">
+          <case id="add-schema-versioning-permission-integration-r-6a5729d39f-c-f5df263497" name="属性重命名后旧名称仍可读取">
+            <given>v1 中属性名为 `Employee.department`；v2 将该属性重命名为 `Employee.org_unit`</given>
+            <when>调用 `getProperty(runner, empId, &apos;department&apos;)`</when>
+            <then>返回与 `getProperty(runner, empId, &apos;org_unit&apos;)` 一致的结果</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-6a5729d39f-c-aa4ce6f925" name="旧名称写入被规范化为 canonical">
+            <given>v2 中 `Employee.department` 是 `Employee.org_unit` 的 alias</given>
+            <when>调用 `setProperty(runner, empId, &apos;department&apos;, &apos;X&apos;)`</when>
+            <then>系统写入 canonical 属性 `org_unit`</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-6a5729d39f-c-2abd0bb26f" name="canonical 与 alias 同时存在时的确定性优先级">
+            <given>同一语义字段同时存在 canonical 与 alias 的值</given>
+            <when>调用 `getProperty`（或 `getPropertyAsOf`）</when>
+            <then>系统返回 canonical 值；系统可提供诊断信息提示存在重复</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-c014c90a6b">
+        <statement>系统 SHALL 支持将 schema 回滚到历史版本。回滚 SHALL 恢复 schema 定义与别名映射；回滚不要求对实例数据做 destructive delete。</statement>
+        <suite id="add-schema-versioning-permission-integration-r-c014c90a6b-suite" name="Schema 回滚/降级（Rollback/Downgrade）">
+          <case id="add-schema-versioning-permission-integration-r-c014c90a6b-c-601f69dbfb" name="严格回滚在不兼容时阻止">
+            <given>v3 对 `required`/`valueType` 做了收紧</given>
+            <when>调用 `rollbackSchema(runner, targetVersion, { strict: true })`；回滚会导致现有实例数据不满足目标版本约束</when>
+            <then>回滚失败并返回包含 entityId/field 的诊断</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-c014c90a6b-c-78e861974b" name="强制回滚允许但返回诊断">
+            <given>同上</given>
+            <when>调用 `rollbackSchema(runner, targetVersion, { strict: false })`</when>
+            <then>回滚成功；返回诊断摘要供后续修复</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-2e11ee5d01">
+        <statement>系统 SHALL 支持以下 schema 演进类型，并在可能破坏兼容性时提供 preflight 校验： - 新增属性/关系 - 重命名属性/关系 - 修改 `valueType` / `required` - 修改类型继承（parent_type / mixins）</statement>
+        <suite id="add-schema-versioning-permission-integration-r-2e11ee5d01-suite" name="valueType/required/继承变更的预检与迁移">
+          <case id="add-schema-versioning-permission-integration-r-2e11ee5d01-c-c5e724b029" name="valueType 变更必须通过预检或显式转换">
+            <given>某属性从 String 变更为 Number</given>
+            <when>应用迁移（strict precheck）</when>
+            <then>若存在不可转换的旧值，迁移失败并返回诊断</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-2e11ee5d01-c-67d66cbfa2" name="required 收紧支持 backfill 后收紧">
+            <given>v1 属性 `Employee.level` 为非必填</given>
+            <when>迁移步骤包含“backfill 默认值”并随后将 required 设为 true</when>
+            <then>迁移成功且后续写入/校验遵循新的 required 规则</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-2e11ee5d01-c-5f4c2af821" name="继承变更必须避免循环与冲突">
+            <given>schema 修改 parent_type 或 mixins</given>
+            <when>应用迁移</when>
+            <then>系统检测并阻止继承循环；系统检测并阻止继承属性 valueType/required 冲突</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-406f89bac9">
+        <statement>系统 SHALL 新增可选的权限能力，用于对本体实体/属性/关系执行访问控制。 权限模型 SHALL 同时支持： - **Relation-path 推导**：用本体关系路径限定可见实体范围（scope） - **ABAC 细化**：在 scope 内按 subject/resource attributes 与策略规则决定 allow/deny，并支持字段级隐藏</statement>
+        <suite id="add-schema-versioning-permission-integration-r-406f89bac9-suite" name="本体论 + 权限集成（Hybrid ABAC + Relation-Path）">
+          <case id="add-schema-versioning-permission-integration-r-406f89bac9-c-1003d49a7f" name="checkAccess 返回 allow/deny 与解释">
+            <given>存在 subject（用户）与 resource（本体实体）</given>
+            <when>调用 `checkAccess(runner, { subjectId, action, resourceId })`</when>
+            <then>返回 `{ allow, matchedPolicies, explanation }`；explanation 包含：命中的 path witness（若适用）与 ABAC 条件对比</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-406f89bac9-c-07e2eaf91b" name="权限策略对 schema 重命名保持稳定">
+            <given>策略引用了属性/关系名</given>
+            <when>schema 迁移发生重命名</when>
+            <then>策略引用通过 alias 解析仍可工作</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-406f89bac9-c-938c06256d" name="权限能力默认不影响既有调用方">
+            <given>未显式启用 policy</given>
+            <when>现有 API（如 `getEntityView`/`findByType`/`runQuery`）被调用</when>
+            <then>行为与启用权限前一致</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-b8814c155d">
+        <statement>系统 SHALL 在 viz 前端新增两个新的 top-nav tab/page（不修改现有 `/permission` demo 的业务逻辑与交互）： - **本体论 + 权限**：展示 Hybrid ABAC + Relation-path 对本体数据的访问控制与解释 - **Schema 版本化**：展示 schema 版本列表、diff、应用迁移、回滚的演示</statement>
+        <suite id="add-schema-versioning-permission-integration-r-b8814c155d-suite" name="Viz 新增演示 Tab（不改旧权限 demo）">
+          <case id="add-schema-versioning-permission-integration-r-b8814c155d-c-9a6df1c9f5" name="旧权限 demo 不受影响">
+            <given>用户访问 `/permission`</given>
+            <when>选择 RBAC/ABAC/Timeline 权限模型并执行查询</when>
+            <then>行为与本 track 前一致</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-b8814c155d-c-8c64552e77" name="新增本体论+权限页面可运行并展示解释">
+            <given>用户进入新页面</given>
+            <when>选择 subject/action/resource 并执行检查</when>
+            <then>页面展示 allow/deny 与解释信息</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-b8814c155d-c-ca77e935e4" name="新增 schema 版本化页面可运行迁移/回滚演示">
+            <given>用户进入新页面</given>
+            <when>应用一次 schema 迁移并查看 diff；触发一次回滚</when>
+            <then>页面展示版本切换与状态变化</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-678787c9cc">
+        <statement>系统 SHALL 在 `/governance` 页面内提供清晰的子 Tabs，将“数据准备（seed/初始化）”与“权限查询（checkAccess/explain）”分离，并允许用户在页面中查看与编辑演示的初始数据，再以编辑后的数据重新初始化演示环境。</statement>
+        <suite id="add-schema-versioning-permission-integration-r-678787c9cc-suite" name="Governance 页面 Tabs 与数据准备（可编辑）">
+          <case id="add-schema-versioning-permission-integration-r-678787c9cc-c-36590aadfd" name="/governance 页面包含两个子 tab">
+            <given>用户进入 `/governance`</given>
+            <when>legacy source did not declare this GWT field</when>
+            <then>页面包含至少两个子 tab：`数据准备` 与 `权限查询`；`权限查询` tab 中可执行权限检查并展示 allow/deny 与解释；切换 tab 不应丢失已输入的 subjectId/resourceId/action（除非用户显式重置）</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-678787c9cc-c-e1e36200fa" name="数据准备 tab 显示默认 seed 数据并允许编辑">
+            <given>用户进入 `/governance` 的 `数据准备` tab</given>
+            <when>legacy source did not declare this GWT field</when>
+            <then>页面展示一份默认的 seed 数据模板；该模板以可视化表格/工作表（类似“对象建模分析”页面顶部表格）展示，使用户可直接查看初始数据；用户可修改该数据（实体/属性/边/策略等）</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-678787c9cc-c-3a0cbb8a14" name="编辑后的数据可用于重新初始化演示环境">
+            <given>用户在 `数据准备` tab 中对 seed 数据进行了修改</given>
+            <when>用户点击“重新初始化/应用”</when>
+            <then>后端使用更新后的 seed 数据重新初始化演示数据与策略；后续在 `权限查询` tab 运行时使用新数据</then>
+          </case>
+          <case id="add-schema-versioning-permission-integration-r-678787c9cc-c-ca2dbe3bd4" name="兼容旧 seed 调用">
+            <given>现有调用方以旧方式调用 `POST /api/governance/seed`（无请求体）</given>
+            <when>触发 seed</when>
+            <then>系统仍使用默认 seed 数据初始化演示环境</then>
+          </case>
+        </suite>
+      </requirement>
+  <requirement id="add-schema-versioning-permission-integration-r-5f449872ba">
+        <statement>系统 SHALL 为新增能力提供单元测试与端到端测试，并确保以下命令通过： - `bun test` - `bun test --coverage` - `codument validate --strict` - `npm run test:e2e`（在 `cozo-lib-bun-viz/`）</statement>
+        <suite id="add-schema-versioning-permission-integration-r-5f449872ba-suite" name="自动化测试与门控">
+        </suite>
+      </requirement>
+  <requirement id="om-024-existential-rule-definition">
+        <statement>系统 SHALL 提供 defineExistentialRule(runner, ruleName, spec) 用于声明式定义存在规则，并持久化到存储关系 om_existential_rule_def（rule_name => spec(Json), mode, message, enabled）。规则 spec SHALL 包含 forEach（body：type，可选 where 属性条件列表）与 exists（head：rel、可选 direction、toType）。v1 head 形态 SHALL 仅支持「∃ 关系边 + 目标实体」。mode SHALL 支持 'check'（默认）与 'materialize'。规则中引用的 type/rel/attr 名称 SHALL 经 alias 解析为 canonical 名称。initSchema SHALL 幂等创建 om_existential_rule_def。系统 SHALL 提供 listExistentialRules(runner) 返回全部规则定义。</statement>
+            <suite id="definition" name="规则定义与持久化">
+              <case id="define-and-persist">
+                <given>数据库已 initSchema，且已定义类型 Order、Shipment 与关系 has_shipment</given>
+                <when>调用 defineExistentialRule(runner, 'order_must_have_shipment', { forEach: { type: 'Order' }, exists: { rel: 'has_shipment', toType: 'Shipment' }, mode: 'check' })</when>
+                <then>om_existential_rule_def 中持久化该规则，listExistentialRules 返回包含该规则的结果</then>
+              </case>
+              <case id="reject-invalid-spec">
+                <given>数据库已 initSchema</given>
+                <when>调用 defineExistentialRule 时 spec 缺少 exists.rel 或 exists.toType，或引用了不存在的类型/关系，或 where 条目缺少 value（undefined）</when>
+                <then>系统返回错误且不写入规则</then>
+              </case>
+              <case id="redefine-upsert">
+                <given>规则 r1 已定义</given>
+                <when>以相同 ruleName 再次调用 defineExistentialRule 且 spec 不同</when>
+                <then>规则定义被更新（upsert 语义），listExistentialRules 返回新 spec</then>
+              </case>
+              <case id="alias-canonicalized-on-define">
+                <given>类型 Order 存在 alias 旧名 PurchaseOrder</given>
+                <when>以 forEach.type = 'PurchaseOrder' 定义规则</when>
+                <then>规则持久化时 type 引用被解析为 canonical 名称 Order</then>
+              </case>
+              <case id="init-schema-idempotent">
+                <given>数据库已 initSchema 且已存在规则定义</given>
+                <when>再次调用 initSchema(runner)</when>
+                <then>om_existential_rule_def 与既有规则定义保持不变</then>
+              </case>
+            </suite>
+      </requirement>
+  <requirement id="om-025-existential-violation-check">
+        <statement>系统 SHALL 提供 checkExistentialRules(runner, options?) 以集合语义检测存在规则违例：对每条 enabled 规则，找出满足 forEach（type 闭包含子类型实例；where 条件按 om_property 当前快照求值）但不存在满足 exists 的关系边（om_edge 按 @NOW 语义判定，目标实体类型在 toType 闭包内）的实体。返回 SHALL 为 [{ rule, entityId, message }] 列表。options SHALL 支持 rules（规则名过滤）与 asOf（按历史时间点检测）。disabled 规则 SHALL 被跳过。</statement>
+            <suite id="violation-check" name="违例检测">
+              <case id="detect-missing-edge">
+                <given>规则 order_must_have_shipment 已定义，实体 o1（Order）无 has_shipment 出边</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>返回包含 { rule: 'order_must_have_shipment', entityId: 'o1' } 的违例</then>
+              </case>
+              <case id="satisfied-not-reported">
+                <given>实体 o2（Order）已有指向 Shipment 实例的 has_shipment 边</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>o2 不出现在违例列表中</then>
+              </case>
+              <case id="polymorphic-body-and-head">
+                <given>RushOrder 继承自 Order，ExpressShipment 继承自 Shipment；实体 ro1（RushOrder）有指向 ExpressShipment 实例的 has_shipment 边，实体 ro2（RushOrder）无该边</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>ro2 被报告为违例且 ro1 不被报告（body 与 head 类型匹配均含子类型）</then>
+              </case>
+              <case id="where-condition-filters-body">
+                <given>规则 forEach.where 为 [{ attr: 'status', op: '=', value: 'confirmed' }]，实体 o3 状态为 draft 且无 has_shipment 边</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>o3 不被报告为违例</then>
+              </case>
+              <case id="retracted-edge-is-missing">
+                <given>实体 o4 的 has_shipment 边已在更早 validTime 被 retract</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>o4 被报告为违例（@NOW 语义下边不存在）</then>
+              </case>
+              <case id="as-of-historical-check">
+                <given>实体 o5 的 has_shipment 边在 T1 之后才被 assert</given>
+                <when>调用 checkExistentialRules(runner, { asOf: T0 })（T0 早于 T1）</when>
+                <then>o5 在 T0 时点被报告为违例，而不带 asOf 调用时不被报告</then>
+              </case>
+            </suite>
+      </requirement>
+  <requirement id="om-026-existential-skolem-chase">
+        <statement>系统 SHALL 提供 applyExistentialRules(runner, options?) 对 mode='materialize' 的规则执行 Skolem chase：循环检测违例并为每个违例实体物化目标实体与关系边，直至不动点或 maxIterations（默认 10）。Skolem 实体 ID SHALL 由规则名与触发实体 ID 的确定性哈希生成；物化 SHALL 幂等（重复执行不产生重复对象）。物化前 SHALL 先检查满足性，已满足（含人工补录）的实体 SHALL NOT 被物化。Skolem 实体 SHALL 写入内置属性 _skolem_rule 标记来源规则。options.validTime SHALL 透传给实体属性与关系边写入。返回 SHALL 包含 { created, iterations, reachedFixpoint }；达到 maxIterations 仍未收敛时 reachedFixpoint SHALL 为 false 并附诊断。</statement>
+            <suite id="skolem-chase" name="Skolem chase 物化">
+              <case id="materialize-creates-entity-and-edge">
+                <given>materialize 规则已定义，实体 o1（Order）无 has_shipment 边</given>
+                <when>调用 applyExistentialRules(runner)</when>
+                <then>系统创建 Shipment 类型的 Skolem 实体并建立 o1 到该实体的 has_shipment 边，created 包含该记录且后续 checkExistentialRules 不再报告 o1</then>
+              </case>
+              <case id="skolem-marked-with-rule">
+                <given>chase 已为 o1 物化 Skolem 实体 s1</given>
+                <when>读取 s1 的属性 _skolem_rule</when>
+                <then>返回来源规则名</then>
+              </case>
+              <case id="idempotent-rerun">
+                <given>chase 已执行一次并物化了 Skolem 实体</given>
+                <when>再次调用 applyExistentialRules(runner)</when>
+                <then>不产生新实体或新边，created 为空且 reachedFixpoint 为 true</then>
+              </case>
+              <case id="manual-fix-respected">
+                <given>实体 o2 的违例已由人工补录真实 Shipment 边修复</given>
+                <when>调用 applyExistentialRules(runner)</when>
+                <then>o2 不被物化 Skolem 实体</then>
+              </case>
+              <case id="iteration-cap-with-diagnostics">
+                <given>两条 materialize 规则构成循环依赖（A 物化的实体触发 B，B 物化的实体触发 A）</given>
+                <when>调用 applyExistentialRules(runner, { maxIterations: 3 })</when>
+                <then>chase 在 3 轮后停止，reachedFixpoint 为 false 且返回包含未收敛规则的诊断</then>
+              </case>
+              <case id="valid-time-applied">
+                <given>materialize 规则已定义且存在违例实体</given>
+                <when>调用 applyExistentialRules(runner, { validTime: T })</when>
+                <then>物化的关系边与属性以 validTime=T 写入，getNeighborsAsOf 在 T 之前查不到该边</then>
+              </case>
+              <case id="check-mode-rules-not-materialized">
+                <given>同时存在 mode='check' 与 mode='materialize' 的规则且各有违例</given>
+                <when>调用 applyExistentialRules(runner)</when>
+                <then>仅 materialize 规则的违例被物化，check 规则的违例保持不变</then>
+              </case>
+            </suite>
+      </requirement>
+  <requirement id="om-027-existential-governance-integration">
+        <statement>存在规则子系统 SHALL 与既有治理机制集成：om_existential_rule_def SHALL 纳入 schema snapshot 范围并参与 diffSchemaVersions 与 rollbackSchema 恢复；规则中的 type/rel/attr 引用 SHALL 经 alias 解析在 schema 重命名后继续工作；chase 与违例检测 SHALL 为系统级操作，不经过 checkAccess 权限过滤；未定义任何存在规则时，既有 API 行为 SHALL 与引入本子系统前一致。</statement>
+            <suite id="governance-integration" name="治理集成">
+              <case id="snapshot-includes-rules">
+                <given>已定义存在规则且应用一次 schema 迁移</given>
+                <when>读取目标版本 schema snapshot</when>
+                <then>snapshot 包含 om_existential_rule_def 的规则定义</then>
+              </case>
+              <case id="rollback-restores-rules">
+                <given>v1 定义了规则 r1，v2 修改了 r1 的 spec</given>
+                <when>调用 rollbackSchema(runner, 1)</when>
+                <then>r1 恢复为 v1 时的定义</then>
+              </case>
+              <case id="alias-keeps-rule-working-after-rename">
+                <given>规则引用关系 has_shipment，schema 迁移将其重命名为 fulfilled_by</given>
+                <when>调用 checkExistentialRules(runner)</when>
+                <then>规则经 alias 解析继续正确检测违例</then>
+              </case>
+              <case id="backward-compatible-when-unused">
+                <given>数据库已 initSchema 但未定义任何存在规则</given>
+                <when>调用既有 API（findByType / getEntityView / setProperty / linkEntities 等）</when>
+                <then>行为与引入存在规则子系统前一致</then>
+              </case>
+            </suite>
+      </requirement>
+</behaviors>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Track id="migrate-viz-examples" version="1" xmlns:cdt="urn:codument:v1">
+  <Metadata>
+    <Status>completed</Status>
+    <Goal>把 cozo-lib-bun-viz 迁移为 workspace 内的 example-server 与 example-browser，并由 browser 包拥有 e2e。</Goal>
+    <Description>完整迁移 server、Vue/Vite browser 和 Playwright e2e，切换到 depa-ontology 包边界并验证跨层行为。</Description>
+    <QuestionMode>decision-tree</QuestionMode>
+    <QuestionSeverity>light</QuestionSeverity>
+    <CommitMode>manual</CommitMode>
+    <CreatedAt>2026-07-26T15:32:35Z</CreatedAt>
+    <UpdatedAt>2026-07-26T16:37:25Z</UpdatedAt>
+    <cdt:ModelingBase commit="UNBORN"/>
+  </Metadata>
+
+  <Ports scope="track">
+    <MaterialBundle role="input" name="behavior-deltas" domain="behavior" path="vfs://./behavior_deltas/"/>
+    <MaterialBundle role="input" name="modeling-deltas" domain="modeling" path="vfs://./modeling_deltas/"/>
+    <MaterialBundle role="input" name="source-viz" domain="source" path="vfs:///Users/kongweixian/infra-dev/cozodb/cozo/cozo-lib-bun-viz/"/>
+    <MaterialBundle role="output" name="example-server" domain="code" path="vfs://@/packages/example-server/"/>
+    <MaterialBundle role="output" name="example-browser" domain="code" path="vfs://@/packages/example-browser/"/>
+    <MaterialBundle role="output" name="behavior" domain="codument" path="vfs://@/codument/behaviors/"/>
+    <MaterialBundle role="output" name="modeling" domain="codument" path="vfs://@/codument/modeling/"/>
+  </Ports>
+
+  <TaskSpace id="space_migrate_viz_examples" name="migrate-viz-examples" version="1">
+    <Description>复制并适配可视化示例应用，验证新的 workspace 包边界。</Description>
+    <SubNodes>
+      <TaskGroup id="P1" name="迁移 example-server" status="DONE" order="0">
+        <Description>建立私有 Bun/Elysia workspace 包，切换到 depa-ontology 并保留 server 行为。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>server 不再引用 cozo-lib-bun 或跨仓库 file 依赖</cdt:Criterion>
+          <cdt:Criterion>迁移的 server tests 全部通过</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T1.1" name="建立 server 包与依赖契约" status="DONE" order="0" priority="P0">
+            <Description>创建 package、README 与测试脚本，声明 depa-ontology、Elysia 和 CORS 依赖。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T1.1-AC1" checked="true">npm workspace 能解析 depa-ontology@0.1.0</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T1.2" name="迁移 server 源码与测试" status="DONE" order="1" priority="P0">
+            <Description>复制 API、helpers、demos、permission models 和 Bun tests，并改写公共包导入。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T1.2-AC1" checked="true">全部原 server 受管源码和 4 个测试文件存在于目标包</cdt:Criterion>
+              <cdt:Criterion id="T1.2-AC2" checked="true">example-server Bun tests 全部通过</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+      </TaskGroup>
+
+      <TaskGroup id="P2" name="迁移 example-browser 与 e2e" status="DONE" order="1">
+        <Description>建立 Vue/Vite browser 包，并让它拥有 Playwright 配置和全部 e2e specs。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>四个 browser routes 与全部 UI 组件已迁移</cdt:Criterion>
+          <cdt:Criterion>Playwright 配置从自身目录稳定解析 server/browser cwd</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T2.1" name="迁移 browser 应用" status="DONE" order="0" priority="P0">
+            <Description>复制 Vue、Vite、TypeScript 源码与文档，建立 private browser package。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T2.1-AC1" checked="true">production build 成功</cdt:Criterion>
+              <cdt:Criterion id="T2.1-AC2" checked="true">ontology、permission、governance、schema routes 均保留</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T2.2" name="迁移 Playwright e2e" status="DONE" order="1" priority="P0">
+            <Description>迁移三个 specs、Playwright 配置和 scripts，适配相邻 example-server 路径。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T2.2-AC1" checked="true">三个 spec 与 14 个场景可被 Playwright 收集</cdt:Criterion>
+              <cdt:Criterion id="T2.2-AC2" checked="true">webServer 可启动 4174 browser 与 4175 server</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+      </TaskGroup>
+
+      <TaskGroup id="P3" name="集成与验收" status="DONE" order="2">
+        <Description>统一 root workspace 生命周期并执行跨层回归。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>根 lockfile 覆盖四个 workspace packages</cdt:Criterion>
+          <cdt:Criterion>server test、browser build、ontology test 与 Playwright e2e 全部通过</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T3.1" name="更新根 workspace 配置与文档" status="DONE" order="0" priority="P0">
+            <Description>更新 scripts、lockfile、README 和 ignore 规则，移除目标包独立 lock 依赖。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T3.1-AC1" checked="true">根 npm scripts 能代理 server test、browser build 与 e2e</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T3.2" name="执行本地集成验证" status="DONE" order="1" priority="P0">
+            <Description>运行安装、server tests、browser build、ontology tests 与完整 Playwright Chromium e2e。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T3.2-AC1" checked="true">server 与 ontology 测试零失败</cdt:Criterion>
+              <cdt:Criterion id="T3.2-AC2" checked="true">browser production build 成功</cdt:Criterion>
+              <cdt:Criterion id="T3.2-AC3" checked="true">14 个 Playwright 场景零失败</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T3.3" name="校验 Codument 产物" status="DONE" order="2" priority="P1">
+            <Description>校验 behavior、modeling 和 track 一致性，记录最终证据。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T3.3-AC1" checked="true">strict validate 与 modeling delta validate 无 error</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:HumanConfirm/></Hook>
+        </Hooks>
+      </TaskGroup>
+    </SubNodes>
+  </TaskSpace>
+
+  <Schedule>
+    <Parallel max-concurrent="1" spot-check="true"/>
+  </Schedule>
+</Track>

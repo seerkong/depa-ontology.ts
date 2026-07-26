@@ -1,0 +1,6 @@
+<module #domain.depa_ontology_workspace { kind = "module" depends_on = "[ modeling://domain/depa_cozo/binding ]" } [
+  <desc ?>Bun 多包工作区：原生绑定由已发布的 depa-cozo 提供；本仓库只保存可移植 DSL 与对象建模运行时。</?>
+  <types ?t>packages/depa-datalog: package depa-datalog
+packages/depa-ontology: package depa-ontology</?t>
+  <fact-source ?>depa-cozo 是唯一的原生二进制加载边界；本模块不反向携带或复制 native artifact。</?>
+]>

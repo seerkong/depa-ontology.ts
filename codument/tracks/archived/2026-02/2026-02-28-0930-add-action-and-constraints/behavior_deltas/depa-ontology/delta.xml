@@ -1,0 +1,194 @@
+<behavior-patch capability="depa-ontology" version="1">
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-df9821a9a6">
+    <requirement id="add-action-and-constraints-r-df9821a9a6">
+      <statement>系统 SHALL 支持为 Object Type 注册 Action（业务级可执行操作）。Action 由名称、参数 schema、以及一个将 Action 转换为一组 Mutation 的处理函数组成。Action 注册通过 `defineAction(runner, typeName, actionName, handler)` 完成。子类型 SHALL 继承父类型的 Action；子类型 SHALL 可以通过重新调用 `defineAction` 覆盖继承的 Action，并可在 handler 中通过 `callParentAction(ctx, actionName, params)` 调用父类型的原始 handler 以实现扩展（类似 super 调用）。执行时按最近祖先优先（MRO）解析 Action 定义。</statement>
+      <suite id="add-action-and-constraints-r-df9821a9a6-suite" name="Action 定义与注册">
+        <case id="add-action-and-constraints-r-df9821a9a6-c-e174a86f79" name="注册并执行 Action">
+          <given>已定义类型 `PurchaseOrder` 及属性 `status`(String)</given>
+          <when>调用 `defineAction(runner, &apos;PurchaseOrder&apos;, &apos;approve&apos;, handler)` 注册 Action；调用 `executeAction(runner, entityId, &apos;approve&apos;, params)` 执行</when>
+          <then>handler 被调用并返回一组 Mutation，系统按顺序执行这些 Mutation</then>
+        </case>
+        <case id="add-action-and-constraints-r-df9821a9a6-c-6400900846" name="对不存在的 Action 执行报错">
+          <given>类型 `PurchaseOrder` 未注册 `reject` Action</given>
+          <when>调用 `executeAction(runner, entityId, &apos;reject&apos;, {})`</when>
+          <then>系统抛出错误，提示 Action 不存在</then>
+        </case>
+        <case id="add-action-and-constraints-r-df9821a9a6-c-eda8145d60" name="Action 继承">
+          <given>类型 `Asset` 注册了 Action `decommission`；`ITAsset` 继承自 `Asset`</given>
+          <when>对 `ITAsset` 实例调用 `executeAction(runner, entityId, &apos;decommission&apos;, {})`</when>
+          <then>执行成功，使用从 `Asset` 继承的 Action 定义</then>
+        </case>
+        <case id="add-action-and-constraints-r-df9821a9a6-c-5f2470b9c3" name="子类型覆盖并扩展父类型 Action">
+          <given>类型 `Asset` 注册了 Action `decommission`，其 handler 返回 `[{mutation: &apos;setStatus&apos;, params: {status: &apos;decommissioned&apos;}}]`；`ITAsset` 继承自 `Asset`，且 `ITAsset` 有额外属性 `ip_address`</given>
+          <when>对 `ITAsset` 调用 `defineAction(runner, &apos;ITAsset&apos;, &apos;decommission&apos;, extendedHandler)` 覆盖该 Action；`extendedHandler` 内部调用 `callParentAction(ctx, &apos;decommission&apos;, params)` 获取父类 Mutation 列表，再追加 `[{mutation: &apos;clearIp&apos;, params: {}}]`</when>
+          <then>对 `ITAsset` 实例执行 `decommission` 时，先执行父类的 `setStatus` Mutation，再执行子类的 `clearIp` Mutation</then>
+        </case>
+        <case id="add-action-and-constraints-r-df9821a9a6-c-e47f6c8471" name="未覆盖时使用最近祖先的 Action">
+          <given>`Server` 继承自 `ITAsset` 继承自 `Asset`；`ITAsset` 覆盖了 `decommission` Action，`Server` 未覆盖</given>
+          <when>对 `Server` 实例执行 `decommission`</when>
+          <then>使用 `ITAsset` 的覆盖版本（最近祖先优先）</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-badccce342">
+    <requirement id="add-action-and-constraints-r-badccce342">
+      <statement>系统 SHALL 支持定义 Mutation（原子数据变更操作）。Mutation 由名称和执行函数组成，通过 `defineMutation(runner, typeName, mutationName, executor)` 注册。Action handler 返回的 Mutation 列表 SHALL 在单次事务语义下按顺序执行。</statement>
+      <suite id="add-action-and-constraints-r-badccce342-suite" name="Mutation 定义与原子执行">
+        <case id="add-action-and-constraints-r-badccce342-c-5d9114521c" name="定义并通过 Action 触发 Mutation">
+          <given>类型 `PurchaseOrder` 定义了 Mutation `setStatus` 和 `addAuditLog`；Action `approve` 的 handler 返回 `[{mutation: &apos;setStatus&apos;, params: {status: &apos;approved&apos;}}, {mutation: &apos;addAuditLog&apos;, params: {action: &apos;approve&apos;}}]`</given>
+          <when>执行 `approve` Action</when>
+          <then>`setStatus` 和 `addAuditLog` 按顺序执行</then>
+        </case>
+        <case id="add-action-and-constraints-r-badccce342-c-730e1183cb" name="Mutation 执行失败时回滚">
+          <given>Action `approve` 触发两个 Mutation</given>
+          <when>第二个 Mutation 执行失败</when>
+          <then>第一个 Mutation 的效果也被回滚，实体状态不变</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-f488b680ad">
+    <requirement id="add-action-and-constraints-r-f488b680ad">
+      <statement>系统 SHALL 支持在 Action 执行前后注册拦截器。拦截器通过 `addInterceptor(runner, typeName, actionName, phase, handler)` 注册，`phase` 为 `&apos;before&apos;` 或 `&apos;after&apos;`。`before` 拦截器可阻止 Action 执行（抛出错误）；`after` 拦截器在 Mutation 全部完成后执行。</statement>
+      <suite id="add-action-and-constraints-r-f488b680ad-suite" name="Action 拦截器（Interceptor）">
+        <case id="add-action-and-constraints-r-f488b680ad-c-ee809833b5" name="before 拦截器阻止 Action">
+          <given>类型 `PurchaseOrder` 的 `approve` Action 注册了 before 拦截器，校验 `status` 必须为 `pending`；某 PurchaseOrder 实例的 `status` 为 `approved`</given>
+          <when>调用 `executeAction(runner, entityId, &apos;approve&apos;, {})`</when>
+          <then>before 拦截器抛出错误，Action 不执行，实体状态不变</then>
+        </case>
+        <case id="add-action-and-constraints-r-f488b680ad-c-2baf857c24" name="after 拦截器执行后置逻辑">
+          <given>`approve` Action 注册了 after 拦截器（如发送通知）</given>
+          <when>Action 及其 Mutation 全部成功执行</when>
+          <then>after 拦截器被调用</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-667d22fd63">
+    <requirement id="add-action-and-constraints-r-667d22fd63">
+      <statement>系统 SHALL 支持定义条件约束：当实体满足某条件时，强制要求另一组属性/关系条件成立。通过 `defineConstraint(runner, typeName, constraintName, { when, then, message })` 注册。</statement>
+      <suite id="add-action-and-constraints-r-667d22fd63-suite" name="条件约束（Conditional Constraint）">
+        <case id="add-action-and-constraints-r-667d22fd63-c-c533832235" name="条件约束校验通过">
+          <given>类型 `Employee` 定义了约束：当 `status=&apos;active&apos;` 时 `end_date` 必须为空；某 Employee 实例 `status=&apos;active&apos;`, `end_date` 未设置</given>
+          <when>调用 `validateConstraints(runner, entityId)`</when>
+          <then>校验通过</then>
+        </case>
+        <case id="add-action-and-constraints-r-667d22fd63-c-620aa70545" name="条件约束校验失败">
+          <given>同上约束定义；某 Employee 实例 `status=&apos;active&apos;`, `end_date=&apos;2026-12-31&apos;`</given>
+          <when>调用 `validateConstraints(runner, entityId)`</when>
+          <then>返回约束违反错误，包含约束名称和 message</then>
+        </case>
+        <case id="add-action-and-constraints-r-667d22fd63-c-db3002bd56" name="写入时自动触发条件约束">
+          <given>同上约束定义</given>
+          <when>调用 `setProperty(runner, entityId, &apos;end_date&apos;, &apos;2026-12-31&apos;)` 且当前 `status=&apos;active&apos;`</when>
+          <then>系统抛出约束违反错误，属性未被写入</then>
+        </case>
+        <case id="add-action-and-constraints-r-667d22fd63-c-fb22f1f028" name="skipConstraints 跳过校验">
+          <given>同上约束定义</given>
+          <when>调用 `setProperty(runner, entityId, &apos;end_date&apos;, &apos;2026-12-31&apos;, { skipConstraints: true })`</when>
+          <then>属性被写入，不触发约束校验</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-55e50a999a">
+    <requirement id="add-action-and-constraints-r-55e50a999a">
+      <statement>系统 SHALL 支持定义跨实体约束：对某类型的所有实例或通过关系关联的实体集合施加聚合条件。通过 `defineConstraint(runner, typeName, constraintName, { scope: &apos;cross-entity&apos;, ... })` 注册。</statement>
+      <suite id="add-action-and-constraints-r-55e50a999a-suite" name="跨实体约束（Cross-Entity Constraint）">
+        <case id="add-action-and-constraints-r-55e50a999a-c-e2cfbd5943" name="唯一性约束">
+          <given>类型 `Department` 定义了跨实体约束：通过 `heads` 关系关联的 Employee 最多 1 个；某 Department 已有 1 个 head</given>
+          <when>尝试 `linkEntities(runner, deptId, &apos;heads&apos;, newEmployeeId)`</when>
+          <then>系统抛出约束违反错误</then>
+        </case>
+        <case id="add-action-and-constraints-r-55e50a999a-c-b418ff0cfe" name="跨实体约束显式校验">
+          <given>同上约束定义</given>
+          <when>调用 `validateConstraints(runner, deptId)`</when>
+          <then>系统检查该 Department 的 heads 关系数量并返回校验结果</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-90ea4dd615">
+    <requirement id="add-action-and-constraints-r-90ea4dd615">
+      <statement>系统 SHALL 支持定义派生属性：其值由一个计算函数根据实体自身属性和/或关联实体属性自动计算。通过 `defineComputed(runner, typeName, attrName, computeFn)` 注册。派生属性 SHALL 在读取时按需计算（lazy），不持久化存储。</statement>
+      <suite id="add-action-and-constraints-r-90ea4dd615-suite" name="派生规则（Derived/Computed Property）">
+        <case id="add-action-and-constraints-r-90ea4dd615-c-c553fcdcce" name="定义并读取派生属性">
+          <given>类型 `PurchaseOrder` 定义了派生属性 `total`，计算逻辑为关联 LineItem 的 `unit_price × quantity` 之和</given>
+          <when>调用 `getEntityView(runner, poId)` 或 `getProperty(runner, poId, &apos;total&apos;)`</when>
+          <then>返回结果中包含 `total` 字段，值为实时计算结果</then>
+        </case>
+        <case id="add-action-and-constraints-r-90ea4dd615-c-9657bb3956" name="派生属性不可手动写入">
+          <given>`total` 是 `PurchaseOrder` 的派生属性</given>
+          <when>调用 `setProperty(runner, poId, &apos;total&apos;, 999)`</when>
+          <then>系统抛出错误，提示不可写入派生属性</then>
+        </case>
+        <case id="add-action-and-constraints-r-90ea4dd615-c-bdec6aa528" name="派生属性用于约束">
+          <given>类型 `Asset` 定义了派生属性 `risk_score`；定义了约束：`risk_score &gt; 80` 时 `requires_review` 必须为 `true`</given>
+          <when>约束校验时</when>
+          <then>系统先计算 `risk_score` 再评估约束条件</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-9aeb553907">
+    <requirement id="add-action-and-constraints-r-9aeb553907">
+      <statement>系统 SHALL 支持子类型继承父类型定义的所有约束。子类型 SHALL 可以定义额外约束，但 SHALL NOT 移除或放宽继承的约束。</statement>
+      <suite id="add-action-and-constraints-r-9aeb553907-suite" name="约束继承">
+        <case id="add-action-and-constraints-r-9aeb553907-c-a0dbc0ca25" name="子类型继承父类型约束">
+          <given>`Asset` 定义了约束 `name_not_empty`；`ITAsset` 继承自 `Asset`</given>
+          <when>对 `ITAsset` 实例调用 `validateConstraints`</when>
+          <then>`name_not_empty` 约束被校验</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-2e37069fcb">
+    <requirement id="add-action-and-constraints-r-2e37069fcb">
+      <statement>系统 SHALL 在 `initSchema` 中新增 Action/Mutation/Constraint/Computed 所需的存储关系，且 SHALL 保持对现有无 Action/Constraint 的 schema 完全向后兼容。</statement>
+      <suite id="add-action-and-constraints-r-2e37069fcb-suite" name="Schema 扩展兼容">
+        <case id="add-action-and-constraints-r-2e37069fcb-c-6e0b095395" name="现有代码无需修改">
+          <given>现有代码不使用 Action/Constraint/Computed</given>
+          <when>升级到新版本后执行</when>
+          <then>所有现有 API 行为不变</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-057586a4ce">
+    <requirement id="add-action-and-constraints-r-057586a4ce">
+      <statement>系统 SHALL 在 cozo-lib-bun-viz 中新增一个独立 demo，展示 Action/Mutation 执行流程、拦截器、条件约束、跨实体约束和派生属性的使用。</statement>
+      <suite id="add-action-and-constraints-r-057586a4ce-suite" name="Action 与约束可视化 Demo">
+        <case id="add-action-and-constraints-r-057586a4ce-c-a2c4e1906b" name="加载 Action 与约束 Demo">
+          <given>用户访问 cozo-lib-bun-viz 的本体 demo 页面</given>
+          <when>选择 Action 与约束 demo</when>
+          <then>工作簿加载包含 Action 定义、约束定义的类型结构和示例数据；可执行展示 Action 触发、约束校验、派生属性计算的查询</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-a600356331">
+    <requirement id="add-action-and-constraints-r-a600356331">
+      <statement>系统 SHALL 在审批流 demo 的工作簿中，以独立 sheet 的形式展示 Action/Mutation/Interceptor/Constraint/Computed 的定义元数据，按类别分 sheet，便于查看规则与代码逻辑映射。</statement>
+      <suite id="add-action-and-constraints-r-a600356331-suite" name="Demo 行为层定义表格化展示">
+        <case id="add-action-and-constraints-r-a600356331-c-c9ef9b1ba9" name="行为层定义按类别展示">
+          <given>用户加载审批流 demo</given>
+          <when>用户查看工作簿中的定义 sheet</when>
+          <then>用户可以分别在 Action/Mutation/Interceptor/Constraint/Computed sheet 中看到对应定义的名称、归属类型、描述和规则摘要</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+<upsert selector="behavior://depa-ontology/requirements/add-action-and-constraints-r-29dca66814">
+    <requirement id="add-action-and-constraints-r-29dca66814">
+      <statement>系统 SHALL 在审批流 demo 中利用 CozoDB time travel 能力记录审批状态/决策的时间轴。submit 时 SHALL 携带生效时间字段 `effective_at`；当审批通过后录入系统时 SHALL 使用该 `effective_at` 写入 time travel relation，并在查询结果中以表格形式展示时间轴。</statement>
+      <suite id="add-action-and-constraints-r-29dca66814-suite" name="Demo 使用 CozoDB 时间旅行展示审批时间轴">
+        <case id="add-action-and-constraints-r-29dca66814-c-3fc30969bf" name="生效时间写入 time travel relation 并可回看">
+          <given>用户对某审批请求执行 submit，并提供 future 的 `effective_at`</given>
+          <when>用户执行 approve 使该请求通过</when>
+          <then>系统将 &quot;approved&quot; 决策按 `effective_at` 写入 time travel relation；用户可以通过时间轴查询看到 submitted/approved 的历史记录</then>
+        </case>
+      </suite>
+    </requirement>
+  </upsert>
+</behavior-patch>

@@ -1,0 +1,54 @@
+# Local AI and agent tooling
+/.agents/
+/.claude/
+/.eidolon/
+/.sparrow/
+
+# Keep repository-local ignore settings untracked by explicit request.
+/.gitignore
+
+# OS and editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Dependencies and package artifacts
+node_modules/
+*.tgz
+
+# Build and tool caches
+dist/
+build/
+.tmp/
+.cache/
+.vite/
+*.tsbuildinfo
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Runtime logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun-debug.log*
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Codument transient execution output
+codument/**/analysis/
+codument/**/reports/

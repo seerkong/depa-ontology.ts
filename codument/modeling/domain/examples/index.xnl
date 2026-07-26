@@ -1,0 +1,44 @@
+<module #examples.server { kind = "module" depends_on = ["depa-ontology" "elysia" "@elysiajs/cors"] behaviors = ["behavior://example-viz/requirements/example-server"] } [
+  <desc ?01KYFMMXKPR989Q32FXQHMYYJE>
+  Bun/Elysia 示例后端：把浏览器请求适配为 depa-ontology 与 CozoDB 调用，不拥有 native binding 或本体运行时实现。
+  </?01KYFMMXKPR989Q32FXQHMYYJE>
+  <capsule-tree ?tree>
+  packages/example-server/
+    package.json                         # 私有 workspace 包；声明 dev/start/test 与 depa-ontology 依赖
+    README.md                            # 启动方式、端口和平台约束
+    src/index.js                         # createApp、API endpoints、数据库生命周期与 registry 串行化
+    src/helpers.js                       # 工作表数据到 ontology batch 的纯转换辅助
+    src/demos/index.js                   # 示例目录与 demo id 索引
+    src/demos/*.js                       # 六组领域示例、默认表与查询定义
+    src/demos/*.test.js                  # temporal 和 behavior 示例的 Bun 验收
+    src/permission/models.js             # 直接 CozoDB 权限模型与查询
+    src/*-api.test.js                    # schema、governance 与 integrity API 验收
+  </?tree>
+  <not-owned-here ?01KYFMMXKPR989Q32FXQHMYYJF>
+  depa-cozo 负责 native loading；depa-ontology 负责对象模型、治理、schema 和 Datalog API。
+  </?01KYFMMXKPR989Q32FXQHMYYJF>
+]>
+
+<module #examples.browser { kind = "module" depends_on = ["modeling://domain/examples/server" "vue" "vite" "@playwright/test"] behaviors = ["behavior://example-viz/requirements/example-browser" "behavior://example-viz/requirements/browser-e2e"] } [
+  <desc ?01KYFMMXKPR989Q32FXQHMYYJG>
+  Vue/Vite 示例展示面及其 Playwright 验收所有者；通过 HTTP API 消费 example-server，不直接加载 native 或 ontology 包。
+  </?01KYFMMXKPR989Q32FXQHMYYJG>
+  <capsule-tree ?tree>
+  packages/example-browser/
+    package.json                         # 私有 workspace 包；声明 dev/build/preview/e2e scripts
+    README.md                            # browser、server 与 e2e 的运行说明
+    index.html                           # Vite HTML 入口
+    vite.config.ts                       # Vue plugin 与 4174 开发端口
+    tsconfig.json                        # Vue/TypeScript 编译配置
+    src/main.ts                          # Vue 应用入口
+    src/router.ts                        # ontology、permission、governance、schema 路由
+    src/lib/api.ts                       # 4175 API client 和响应类型
+    src/components/*.vue                 # 表格、树、图、查询和 workbook 展示组件
+    src/pages/*.vue                      # 四个交互式示例页面
+    playwright.config.ts                 # 跨 workspace 启动 server/browser 的 Chromium 配置
+    e2e/*.pw.ts                          # demo、permission、schema、governance、integrity 端到端验收
+  </?tree>
+  <not-owned-here ?01KYFMMXKPR989Q32FXQHMYYJH>
+  HTTP API 实现与数据库生命周期属于 example-server；本体行为属于 depa-ontology。
+  </?01KYFMMXKPR989Q32FXQHMYYJH>
+]>

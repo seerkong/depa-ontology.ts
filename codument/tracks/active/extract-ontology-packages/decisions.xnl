@@ -1,0 +1,4 @@
+<decisions #extract_ontology_packages [
+  <decision #published_native_dependency { status = "accepted" } ?>depa-ontology 固定依赖 npm 上的 depa-cozo@0.1.0；不使用本地 file 依赖。 </?>
+  <decision #datalog_separate_package { status = "accepted" } ?>Datalog 不属于 ontology，保留为独立 depa-datalog 包。 </?>
+]>
