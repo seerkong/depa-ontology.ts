@@ -1,10 +1,16 @@
 {
   "name": "depa-datalog",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Portable CozoScript and Datalog query builder for Depa",
   "main": "index.js",
   "types": "index.d.ts",
-  "files": ["index.js", "index.d.ts", "README.md"],
-  "scripts": { "test": "bun test" },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "bun test"
+  },
   "license": "MPL-2.0"
 }

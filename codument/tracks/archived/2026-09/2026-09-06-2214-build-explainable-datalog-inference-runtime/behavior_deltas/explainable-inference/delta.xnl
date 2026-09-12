@@ -1,0 +1,20 @@
+<BehaviorPatch #track.build-explainable-datalog-inference-runtime.behavior_patch.explainable-inference apiVersion="codument.tech/v1alpha1" version="1" { capability = "explainable-inference" } (
+  <Mutations [
+    <Upsert { selector = "behavior://explainable-inference/requirements/finite-explainable-inference" } (
+      <Requirement #finite-explainable-inference (
+        <Statement ?>推理 SHALL 在冻结 epoch 内求有限关系固定点，保存每次推导的 rule、直接 premises、conclusion 与缺席证据；预算耗尽不能报告 complete。</?>
+        <Suites [
+          <Suite #supports { name = "支持图" } (
+            <Cases [
+              <Case #cycle-and-multiple-causes (
+                <Given ?>有环依赖、多个根因与多前提规则</?>
+                <When ?>执行真实 Cozo 推理并查询解释</?>
+                <Then ?>固定点终止，保留多条支持路径与每组完整前提；新 epoch 移除根因后旧推导不残留。</?>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+  ]>
+)>

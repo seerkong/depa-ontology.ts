@@ -1,0 +1,14 @@
+{
+  "name": "depa-inference-contract",
+  "version": "0.1.0",
+  "description": "Finite relational inference contract",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "dependencies": {},
+  "license": "MPL-2.0"
+}

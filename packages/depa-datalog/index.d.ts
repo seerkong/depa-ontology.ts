@@ -60,6 +60,10 @@ export type DslExpression =
 export class CozoQueryBuilder {
   input(bindings: Record<string, QueryTerm>): CozoQueryBuilder;
   select(columns: string[]): CozoQueryBuilder;
+  rule(name: string): CozoQueryBuilder;
+  bind(name: string, term: unknown): CozoQueryBuilder;
+  rows(name: string, columns: string[], rows: unknown[][]): CozoQueryBuilder;
+  fromRule(name: string, terms: unknown[], options?: { negated?: boolean }): CozoQueryBuilder;
   fromStored(relationName: string, bindings: Record<string, QueryTerm>): CozoQueryBuilder;
   atom(text: string): CozoQueryBuilder;
   where(condition: DslExpression | RawToken | string): CozoQueryBuilder;

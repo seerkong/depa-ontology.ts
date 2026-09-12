@@ -1,0 +1,13 @@
+<object #inference.result { kind = "entity" fact_grade = "derived_projection_cache" single_writer = "inference.logic" } (
+  <desc ?>从冻结程序与输入派生的 epoch 结果，包含完整性、事实与直接推导支持；不是领域写入 authority。</?>
+  <types ?>interface InferenceResult { epoch: string; status: 'complete' | 'incomplete' | 'invalid'; facts: Fact[]; supports: Support[] }
+interface Support { ruleId: string; conclusion: string; premises: string[]; absences: Atom[] }</?>
+)>
+<module #inference.packages { kind = "module" depends_on = ["depa-datalog" "depa-cozo"] } (
+  <desc ?>数据、纯处理器、原生支持、装配分离，不依赖对象模型。</?>
+  <capsule-tree ?>depa-inference-contract/index.d.ts: 输入与结果协议
+depa-inference-logic/index.js: infer(runtime,input,config) 规则校验与解释图
+depa-inference-cozo-support/index.js: evaluate 创建、终止并回收 worker process
+depa-inference-cozo-support/worker.js: 单次 immutable query 与 mem DB 关闭
+depa-inference-capsule/index.js: createInferenceCapsule 默认装配</?>
+)>

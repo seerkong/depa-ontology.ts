@@ -50,3 +50,39 @@ npm run dev:browser
 - `npm run start:server` 以非 watch 模式启动 server；`npm run preview:browser` 预览 production build。
 
 `depa-cozo@0.1.0` 的当前 native package 仅支持 macOS arm64。因此，真实加载 CozoDB 的 ontology/server 测试和完整 e2e 需要在 macOS arm64 上运行；不触发 native 加载的 `depa-datalog` 测试与 browser 静态构建不受此约束。
+
+## Reproducing unpublished inference candidates
+
+Public package manifests use exact semver dependencies: depa-cozo 0.1.1,
+depa-datalog 0.1.1, and the four depa-inference packages at 0.1.0. These
+candidate versions are not assumed to exist in the npm registry.
+
+Obtain the six tarballs named by `candidate-lock.json`, then run:
+
+```sh
+node scripts/prepare-candidates.js /path/to/candidate-tarballs
+npm ci --ignore-scripts
+npm run test:inference
+npm run test:inference:package
+```
+
+The preparation command verifies actual SHA-256 bytes, package identity and
+public dependency versions before copying artifacts to the ignored candidate
+directory. The tracked candidate lock contains no workspace paths. This private
+workspace has a development dependency on the verified native tarball. npm
+resolves the public packages' matching 0.1.1 requirement to that artifact and
+generates an honest `file:` resolution with real integrity in package-lock.json.
+The public package manifests contain no file dependency, workspace source alias,
+or fabricated registry URL. The other five packages are ordinary workspace
+packages whose versions match the public semver declarations.
+
+`test:inference:package` packs the public packages and the actual installed
+native dependency, verifies exact installed-version closure and tarball lock
+integrity, performs a fresh `npm ci` in an isolated consumer, then checks type
+declarations and real Node.js/Bun inference. Runtime entries must resolve to the
+consumer's installed files, never a workspace source directory.
+
+After registry publication is separately authorized and verified, remove the
+private root `depa-cozo` candidate development dependency and regenerate the
+workspace lock with npm. Do not edit resolved URLs or integrity fields by hand.
+The candidate lock records tested artifacts; it is not publication evidence.

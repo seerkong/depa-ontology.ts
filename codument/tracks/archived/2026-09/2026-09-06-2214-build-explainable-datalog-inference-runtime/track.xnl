@@ -1,0 +1,41 @@
+<Track #build-explainable-datalog-inference-runtime apiVersion="codument.tech/v1alpha1" version="1" { status = "completed" goal = "实现有限域可解释 Datalog 公共协议、逻辑、Cozo 支持与 capsule。" description = "实现有限域可解释 Datalog 公共协议、逻辑、Cozo 支持与 capsule。" question_mode = "decision-tree" question_severity = "auto" commit_mode = "manual" created_at = "2026-09-06T18:54:20.764Z" updated_at = "2026-09-06T19:14:17.931Z" modeling_base_commit = "6f24a3084d5dfc21d401fde575b95c442d92c8d8" engineering_base_commit = "6f24a3084d5dfc21d401fde575b95c442d92c8d8" } (
+  <Ports { scope = "track" } [
+    <MaterialBundle { role = "input" name = "modeling_delta" domain = "modeling" path = "vfs://./modeling_deltas/" }>
+    <MaterialBundle { role = "output" name = "modeling" domain = "modeling" path = "vfs://@/codument/modeling/" }>
+  ]>
+  <TaskSpace #space_build-explainable-datalog-inference-runtime { name = "build-explainable-datalog-inference-runtime" version = "1" } (
+    <SubNodes [
+      <TaskGroup #P1 { name = "公共推理能力" status = "DONE" order = 0 } (
+        <SubNodes [
+          <Task #P1-T1 { name = "协议编译求值与支持图" status = "DONE" order = 0 } (
+            <Description ?01M1W185AHW5Z4CKYW4DGVYZEX>
+            实现有限域安全规则、冻结输入否定、显式支持图、epoch 重算、预算失败封闭；包不依赖对象模型。
+            </?01M1W185AHW5Z4CKYW4DGVYZEX>
+            <Acceptance [
+              <Criterion #P1-T1-AC1 { checked = true } ?01M1W185AHW5Z4CKYW4DGVYZEY>
+              Node/Bun 真实 Cozo 固定点、多根因、多前提、环、无污染、预算、错误均通过。
+              </?01M1W185AHW5Z4CKYW4DGVYZEY>
+            ]>
+          )>
+          <Task #P1-T2 { name = "独立消费与知识收口" status = "DONE" order = 1 } (
+            <Description ?01M1W185AHW5Z4CKYW4DGVYZEZ>
+            验证包类型、tarball 内容和真实独立安装消费；更新原生无关边界与说明。
+            </?01M1W185AHW5Z4CKYW4DGVYZEZ>
+            <Acceptance [
+              <Criterion #P1-T2-AC1 { checked = true } ?01M1W185AHW5Z4CKYW4DGVYZF0>
+              四包加 datalog 从 tarball 在隔离 Node/Bun 消费，来源与测试可追溯。
+              </?01M1W185AHW5Z4CKYW4DGVYZF0>
+            ]>
+          )>
+        ]>
+        <Gate [
+          <Criterion #P1-AC1 { checked = true } ?01M1W185AHW5Z4CKYW4DGVYZF1>
+          公共类型与独立消费、核心回归一致。
+          </?01M1W185AHW5Z4CKYW4DGVYZF1>
+        ]>
+      )>
+    ]>
+  )>
+  <Schedule []>
+  <Hooks []>
+)>

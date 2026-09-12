@@ -1,0 +1,26 @@
+<Behavior #explainable-inference apiVersion="codument.tech/v1alpha1" version="1" (
+  <Requirements [
+    <Requirement #finite-explainable-inference (
+      <Statement ?01M1W294SGT598S2MV4MTS8YPV>
+      推理 SHALL 在冻结 epoch 内求有限关系固定点，保存每次推导的 rule、直接 premises、conclusion 与缺席证据；预算耗尽不能报告 complete。
+      </?01M1W294SGT598S2MV4MTS8YPV>
+      <Suites [
+        <Suite #supports { name = "支持图" } (
+          <Cases [
+            <Case #cycle-and-multiple-causes (
+              <Given ?01M1W294SGT598S2MV4MTS8YPW>
+              有环依赖、多个根因与多前提规则
+              </?01M1W294SGT598S2MV4MTS8YPW>
+              <When ?01M1W294SGT598S2MV4MTS8YPX>
+              执行真实 Cozo 推理并查询解释
+              </?01M1W294SGT598S2MV4MTS8YPX>
+              <Then ?01M1W294SGT598S2MV4MTS8YPY>
+              固定点终止，保留多条支持路径与每组完整前提；新 epoch 移除根因后旧推导不残留。
+              </?01M1W294SGT598S2MV4MTS8YPY>
+            )>
+          ]>
+        )>
+      ]>
+    )>
+  ]>
+)>

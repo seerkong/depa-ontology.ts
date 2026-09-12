@@ -19,6 +19,26 @@ const {
   inExpr,
 } = require('depa-datalog');
 
+describe('finite relational program construction', () => {
+  test('named rules, parameterized rows, unification and frozen negation', () => {
+    const built = query().rows('seed', ['x'], [['hostile\"\n:rm data {x}']])
+      .rule('allowed').select(['x']).fromRule('seed', [variable('x')])
+      .fromRule('denied', [variable('x')], { negated: true }).bind('marker', 'safe').build();
+    expect(built.script).toContain('seed[x] <- $_p0');
+    expect(built.script).toContain('allowed[x] :=');
+    expect(built.script).toContain('not denied[x]');
+    expect(built.script).toContain('marker = $_p1');
+    expect(built.script).not.toContain('hostile');
+    expect(built.params._p0).toEqual([['hostile\"\n:rm data {x}']]);
+  });
+  test('row arity and identifiers fail before script generation', () => {
+    expect(() => query().rows('r', ['x'], [[1,2]])).toThrow();
+    expect(() => query().fromRule('r] :create injected {x}', [variable('x')])).toThrow();
+    expect(() => query().rule('unsafe-name')).toThrow();
+    expect(() => query().bind('x = 1', 2)).toThrow();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // assertIdentifier
 // ---------------------------------------------------------------------------

@@ -148,6 +148,7 @@ class CozoQueryBuilder {
     this.offsetValue = null;
     this.params = {};
     this.autoParamCounter = 0;
+    this.ruleName = '?';
   }
 
   _nextAutoParamName() {
@@ -207,6 +208,33 @@ class CozoQueryBuilder {
       throw new DslError('DSL104', 'select(columns) expects a non-empty array');
     }
     this.head = columns.map((column) => assertIdentifier(column, 'head variable'));
+    return this;
+  }
+
+  rule(name) {
+    this.ruleName = assertIdentifier(name, 'rule');
+    return this;
+  }
+
+  rows(name, columns, rows) {
+    assertIdentifier(name, 'inline relation');
+    if (!Array.isArray(columns) || !columns.length || !Array.isArray(rows) || rows.some(row => !Array.isArray(row) || row.length !== columns.length)) {
+      throw new DslError('DSL126', 'rows() requires columns and matching row arity');
+    }
+    columns.forEach(column => assertIdentifier(column, 'column'));
+    this.inputClauses.push(`${name}[${columns.join(', ')}] <- ${this._compileTerm(val(rows))}`);
+    return this;
+  }
+
+  fromRule(name, terms, { negated = false } = {}) {
+    assertIdentifier(name, 'inline relation');
+    if (!Array.isArray(terms) || !terms.length) throw new DslError('DSL127', 'fromRule() requires nonempty terms');
+    this.atoms.push(`${negated ? 'not ' : ''}${name}[${terms.map(term => this._compileTerm(term)).join(', ')}]`);
+    return this;
+  }
+
+  bind(name, term) {
+    this.atoms.push(`${assertIdentifier(name, 'binding variable')} = ${this._compileTerm(term)}`);
     return this;
   }
 
@@ -402,7 +430,7 @@ class CozoQueryBuilder {
       if (!atoms.length) {
         throw new DslError('DSL114', 'select() requires at least one atom');
       }
-      lines.push(`?[${this.head.join(', ')}] :=\n  ${atoms.join(',\n  ')}`);
+      lines.push(`${this.ruleName}[${this.head.join(', ')}] :=\n  ${atoms.join(',\n  ')}`);
     }
 
     for (const directive of this.directives) {

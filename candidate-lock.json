@@ -1,0 +1,51 @@
+{
+  "schema": "depa.candidate-lock/v1",
+  "packages": [
+    {
+      "name": "depa-cozo",
+      "version": "0.1.1",
+      "sha256": "sha256:739580c7733951ab2078309e4b276db4df1ac2d92deca99dd5ea8a15bcd1019e",
+      "dependencies": {}
+    },
+    {
+      "name": "depa-datalog",
+      "version": "0.1.1",
+      "sha256": "sha256:e9fd23d3f7c04bf05b34498dd439181f7051615b47ce2a8742035ac094e94ad7",
+      "dependencies": {}
+    },
+    {
+      "name": "depa-inference-contract",
+      "version": "0.1.0",
+      "sha256": "sha256:0fbee83defa6fea374987006bbc2e4adae4264ab97bd6eb838cd398fcf7fc59f",
+      "dependencies": {}
+    },
+    {
+      "name": "depa-inference-logic",
+      "version": "0.1.0",
+      "sha256": "sha256:080df1dec72a53f9c11cefa1fa10b2b671c0f183da598cf102debf22f87c6d4b",
+      "dependencies": {
+        "depa-inference-contract": "0.1.0",
+        "depa-datalog": "0.1.1"
+      }
+    },
+    {
+      "name": "depa-inference-cozo-support",
+      "version": "0.1.0",
+      "sha256": "sha256:7cdd4859767cb5fc8a7c6ca688708ad8c2b71b56d50d1f173cc44cd25869f6c0",
+      "dependencies": {
+        "depa-inference-contract": "0.1.0",
+        "depa-cozo": "0.1.1"
+      }
+    },
+    {
+      "name": "depa-inference-capsule",
+      "version": "0.1.0",
+      "sha256": "sha256:b97e58a2af68ff74e96f493e11878fb7596a94526c988d326582723de3dec635",
+      "dependencies": {
+        "depa-inference-contract": "0.1.0",
+        "depa-inference-logic": "0.1.0",
+        "depa-inference-cozo-support": "0.1.0"
+      }
+    }
+  ]
+}

@@ -1,21 +1,16 @@
 {
-  "name": "depa-ontology",
+  "name": "depa-inference-logic",
   "version": "0.1.0",
-  "description": "Object-model and CozoScript DSL layer for Depa Cozo",
+  "description": "Finite relational inference logic",
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
     "index.js",
     "index.d.ts",
-    "cozo-om.js",
-    "cozo-om.d.ts",
     "README.md"
   ],
-  "scripts": {
-    "test": "bun test"
-  },
   "dependencies": {
-    "depa-cozo": "0.1.1",
+    "depa-inference-contract": "0.1.0",
     "depa-datalog": "0.1.1"
   },
   "license": "MPL-2.0"
