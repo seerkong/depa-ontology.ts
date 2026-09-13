@@ -4,17 +4,15 @@ describe('Phase 2 (track add-action-and-constraints): module exports', () => {
   test('cozo-om exports new behavior-layer APIs', async () => {
     const om = require('../cozo-om');
 
+    // Definition and registration are separate APIs: define* persists the definition,
+    // register* attaches the runtime callback. `addInterceptor` became `defineInterceptor`.
     const expectedFns = [
-      'defineMutation',
-      'executeMutations',
-      'defineAction',
-      'executeAction',
-      'callParentAction',
-      'addInterceptor',
-      'defineConstraint',
-      'validateConstraints',
-      'defineComputed',
-      'clearRegistry',
+      'defineMutation', 'registerMutation',
+      'defineAction', 'registerAction', 'executeAction', 'callParentAction',
+      'defineConstraint', 'registerConstraint', 'registerValidator', 'validateConstraints',
+      'defineComputed', 'registerComputed',
+      'defineInterceptor', 'registerInterceptor',
+      'executeMutations', 'clearRegistry',
     ];
 
     for (const name of expectedFns) {

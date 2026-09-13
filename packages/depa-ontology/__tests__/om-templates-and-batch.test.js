@@ -5,7 +5,7 @@ let db;
 let om;
 
 beforeAll(async () => {
-  ({ db, om } = await createTestDb());
+  ({ db, om , runtime } = await createTestDb());
 });
 
 afterAll(() => {
@@ -23,11 +23,11 @@ describe('impactAnalysis', () => {
 
     await om.createEntity(db, 'A1', 'TypeA', 'A1');
     await om.createEntity(db, 'B1', 'TypeB', 'B1');
-    await om.linkEntities(db, 'A1', 'r', 'B1');
+    await om.linkEntities(runtime, 'A1', 'r', 'B1');
   });
 
   test('returns impactedCount=1 and visual graph with nodes and edges', async () => {
-    const result = await om.impactAnalysis(db, {
+    const result = await om.impactAnalysis(runtime, {
       rootId: 'A1',
       relNames: ['r'],
       maxDepth: 2,
@@ -55,11 +55,11 @@ describe('ownershipTree', () => {
 
     await om.createEntity(db, 'Aroot', 'Container', 'Aroot');
     await om.createEntity(db, 'Achild', 'Container', 'Achild');
-    await om.linkEntities(db, 'Aroot', 'contains', 'Achild');
+    await om.linkEntities(runtime, 'Aroot', 'contains', 'Achild');
   });
 
   test('returns tree with rootId and childrenById entries', async () => {
-    const result = await om.ownershipTree(db, {
+    const result = await om.ownershipTree(runtime, {
       rootId: 'Aroot',
       ownerRelNames: ['contains'],
       maxDepth: 2,
@@ -86,17 +86,17 @@ describe('riskHotspot', () => {
     await om.defineRelation(db, 'depends_on', 'Task', 'Task', true);
 
     await om.createEntity(db, 't1', 'Task', 'Task 1');
-    await om.setProperty(db, 't1', 'estimate_hours', 10);
+    await om.setProperty(runtime, 't1', 'estimate_hours', 10);
 
     await om.createEntity(db, 't2', 'Task', 'Task 2');
-    await om.setProperty(db, 't2', 'estimate_hours', 50);
+    await om.setProperty(runtime, 't2', 'estimate_hours', 50);
 
     await om.createEntity(db, 't3', 'Task', 'Task 3');
-    await om.setProperty(db, 't3', 'estimate_hours', 30);
+    await om.setProperty(runtime, 't3', 'estimate_hours', 30);
 
     // t1 -> t2 and t1 -> t3 give t1 degree 2, t2 degree 1, t3 degree 1
-    await om.linkEntities(db, 't1', 'depends_on', 't2');
-    await om.linkEntities(db, 't1', 'depends_on', 't3');
+    await om.linkEntities(runtime, 't1', 'depends_on', 't2');
+    await om.linkEntities(runtime, 't1', 'depends_on', 't3');
   });
 
   test('returns topK=2 sorted descending by score', async () => {
@@ -138,7 +138,7 @@ describe('ingestBatch rollback', () => {
       edges: [],
     };
 
-    await expect(om.ingestBatch(db, batch)).rejects.toThrow();
+    await expect(om.ingestBatch(runtime, batch)).rejects.toThrow();
 
     // entity x1 should not exist after rollback
     const rows = await db.run(
@@ -154,14 +154,14 @@ describe('ingestBatch rollback', () => {
 // ---------------------------------------------------------------------------
 describe('traverse', () => {
   test('traverse with empty relPath returns start entity', async () => {
-    const result = await om.traverse(db, 'A1', []);
+    const result = await om.traverse(runtime, 'A1', []);
     expect(result.length).toBe(1);
     expect(result[0].id).toBe('A1');
     expect(result[0].typeName).toBe('TypeA');
   });
 
   test('traverse with path length 1 follows one hop', async () => {
-    const result = await om.traverse(db, 'A1', ['r']);
+    const result = await om.traverse(runtime, 'A1', ['r']);
     expect(result.length).toBe(1);
     expect(result[0].id).toBe('B1');
     expect(result[0].typeName).toBe('TypeB');

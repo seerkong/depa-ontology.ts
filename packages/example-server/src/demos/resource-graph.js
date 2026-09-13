@@ -144,7 +144,7 @@ const queries = [
     dsl: "// DSL v2: polymorphic resource list\nconst q = dsl.query()\n  .select(['id', 'label', 'typeName', 'resourceKey'])\n  .fromStored('om_entity', { id: dsl.var('id'), type_name: dsl.var('typeName'), label: dsl.var('label') })\n  .fromStored('om_property', { entity_id: dsl.var('id'), attr_name: dsl.param('key_attr', 'resource_key'), value: dsl.var('resourceKey') })\n  .where(dsl.or(\n    dsl.eq(dsl.var('typeName'), dsl.param('t1', 'Resource')),\n    dsl.eq(dsl.var('typeName'), dsl.param('t2', 'ApiService')),\n    dsl.eq(dsl.var('typeName'), dsl.param('t3', 'Worker')),\n    dsl.eq(dsl.var('typeName'), dsl.param('t4', 'Dataset')),\n  ))\n  .order('typeName')\n  .build();",
     defaultView: 'table',
     kind: 'dsl',
-    run: async (db) => {
+    run: async (runtime) => {
       const q = dsl.query()
         .select(['id', 'label', 'typeName', 'resourceKey'])
         .fromStored('om_entity', { id: dsl.var('id'), type_name: dsl.var('typeName'), label: dsl.var('label') })
@@ -167,11 +167,11 @@ const queries = [
     queryId: 'impactAnalysis',
     label: '\u8d44\u6e90\u4f9d\u8d56\u5f71\u54cd\u5206\u6790',
     meaning: '\u4ece Gateway API \u51fa\u53d1\uff0c\u8ffd\u8e2a\u4f9d\u8d56\u4e0e\u4ea7\u751f\u7684\u6570\u636e',
-    dsl: "await om.impactAnalysis(db, { rootId: 'api:gateway', relNames: ['depends_on', 'produces'], maxDepth: 3, direction: 'outgoing' });",
+    dsl: "await om.impactAnalysis(runtime, { rootId: 'api:gateway', relNames: ['depends_on', 'produces'], maxDepth: 3, direction: 'outgoing' });",
     defaultView: 'graph',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.impactAnalysis(db, { rootId: 'api:gateway', relNames: ['depends_on', 'produces'], maxDepth: 3, direction: 'outgoing' });
+    run: async (runtime) => {
+      const result = await om.impactAnalysis(runtime, { rootId: 'api:gateway', relNames: ['depends_on', 'produces'], maxDepth: 3, direction: 'outgoing' });
       return { view: 'graph', kind: 'template', data: result.data.visual, meta: result.stats };
     },
   },
@@ -179,11 +179,11 @@ const queries = [
     queryId: 'ownershipTree',
     label: '\u8d44\u6e90\u8303\u56f4\u6811',
     meaning: 'Platform Scope \u4e0b\u7684\u8d44\u6e90\u5c42\u7ea7',
-    dsl: "await om.ownershipTree(db, { rootId: 'scope:platform', ownerRelNames: ['contained_in'], maxDepth: 3 });",
+    dsl: "await om.ownershipTree(runtime, { rootId: 'scope:platform', ownerRelNames: ['contained_in'], maxDepth: 3 });",
     defaultView: 'tree',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.ownershipTree(db, { rootId: 'scope:platform', ownerRelNames: ['contained_in'], maxDepth: 3 });
+    run: async (runtime) => {
+      const result = await om.ownershipTree(runtime, { rootId: 'scope:platform', ownerRelNames: ['contained_in'], maxDepth: 3 });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };
     },
   },
@@ -194,7 +194,7 @@ const queries = [
     dsl: "await om.riskHotspot(db, { typeName: 'Dataset', riskAttr: 'size_mb', topK: 5, minScore: 0, degreeWeight: 10 });",
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => {
+    run: async (runtime) => {
       const result = await om.riskHotspot(db, { typeName: 'Dataset', riskAttr: 'size_mb', topK: 5, minScore: 0, degreeWeight: 10 });
       return { view: 'table', kind: 'template', data: result.data.visual, meta: result.stats };
     },

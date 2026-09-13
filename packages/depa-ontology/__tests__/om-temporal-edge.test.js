@@ -27,7 +27,7 @@ describe('temporal: om_edge bi-temporal storage', () => {
   });
 
   test('linkEntities validTime supports future-effective edges filtered by @ NOW', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Department', 'Department');
@@ -37,8 +37,8 @@ describe('temporal: om_edge bi-temporal storage', () => {
       await om.createEntity(db, 'dept:eng', 'Department', 'Engineering');
       await om.createEntity(db, 'dept:future', 'Department', 'FutureDept');
 
-      await om.linkEntities(db, 'emp:1', 'belongs_to', 'dept:eng', {}, { validTime: '2000-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'emp:1', 'belongs_to', 'dept:future', {}, { validTime: '2100-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:1', 'belongs_to', 'dept:eng', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:1', 'belongs_to', 'dept:future', {}, { validTime: '2100-01-01T00:00:00Z' });
 
       const neighbors = await om.getNeighbors(db, 'emp:1', 'belongs_to');
       expect(neighbors.outgoing.map((n) => n.entityId).sort()).toEqual(['dept:eng']);
@@ -48,7 +48,7 @@ describe('temporal: om_edge bi-temporal storage', () => {
   });
 
   test('unlinkEntities retracts an edge effective at validTime', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Department', 'Department');
@@ -58,9 +58,9 @@ describe('temporal: om_edge bi-temporal storage', () => {
       await om.createEntity(db, 'dept:eng2', 'Department', 'Engineering');
       await om.createEntity(db, 'dept:prod2', 'Department', 'Product');
 
-      await om.linkEntities(db, 'emp:2', 'belongs_to', 'dept:eng2', {}, { validTime: '2000-01-01T00:00:00Z' });
-      await om.unlinkEntities(db, 'emp:2', 'belongs_to', 'dept:eng2', { validTime: '2001-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'emp:2', 'belongs_to', 'dept:prod2', {}, { validTime: '2001-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:2', 'belongs_to', 'dept:eng2', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.unlinkEntities(runtime, 'emp:2', 'belongs_to', 'dept:eng2', { validTime: '2001-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:2', 'belongs_to', 'dept:prod2', {}, { validTime: '2001-01-01T00:00:00Z' });
 
       const neighbors = await om.getNeighbors(db, 'emp:2', 'belongs_to');
       expect(neighbors.outgoing.map((n) => n.entityId).sort()).toEqual(['dept:prod2']);

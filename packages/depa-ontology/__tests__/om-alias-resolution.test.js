@@ -57,26 +57,26 @@ async function putRawProperty(db, entityId, attrName, value, validTime) {
 
 describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
   test('alias resolution for attributes (om_alias_attr)', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'org_unit', 'String', true);
       await putAliasAttr(db, 'Employee', 'department', 'org_unit');
 
       await om.createEntity(db, 'emp:alias-1', 'Employee', 'Alice');
-      await om.setProperty(db, 'emp:alias-1', 'department', 'Engineering', {
+      await om.setProperty(runtime, 'emp:alias-1', 'department', 'Engineering', {
         validTime: '2000-01-01T00:00:00Z',
       });
 
-      await expect(om.getProperty(db, 'emp:alias-1', 'org_unit')).resolves.toBe('Engineering');
-      await expect(om.getProperty(db, 'emp:alias-1', 'department')).resolves.toBe('Engineering');
+      await expect(om.getProperty(runtime, 'emp:alias-1', 'org_unit')).resolves.toBe('Engineering');
+      await expect(om.getProperty(runtime, 'emp:alias-1', 'department')).resolves.toBe('Engineering');
     } finally {
       db.close();
     }
   });
 
   test('canonical wins when both canonical and alias values exist', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'org_unit', 'String', true);
@@ -84,21 +84,21 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
 
       await om.createEntity(db, 'emp:alias-2', 'Employee', 'Bob');
 
-      await om.setProperty(db, 'emp:alias-2', 'org_unit', 'CanonicalValue', {
+      await om.setProperty(runtime, 'emp:alias-2', 'org_unit', 'CanonicalValue', {
         validTime: '2000-01-01T00:00:00Z',
       });
 
       // Ensure the alias-named attribute entry exists independently in storage.
       await putRawProperty(db, 'emp:alias-2', 'department', 'AliasValue', '2000-01-01T00:00:00Z');
 
-      await expect(om.getProperty(db, 'emp:alias-2', 'org_unit')).resolves.toBe('CanonicalValue');
+      await expect(om.getProperty(runtime, 'emp:alias-2', 'org_unit')).resolves.toBe('CanonicalValue');
     } finally {
       db.close();
     }
   });
 
   test('alias fallback when canonical missing', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'org_unit', 'String', true);
@@ -109,14 +109,14 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
       // Only store under the alias name.
       await putRawProperty(db, 'emp:alias-3', 'department', 'Support', '2000-01-01T00:00:00Z');
 
-      await expect(om.getProperty(db, 'emp:alias-3', 'org_unit')).resolves.toBe('Support');
+      await expect(om.getProperty(runtime, 'emp:alias-3', 'org_unit')).resolves.toBe('Support');
     } finally {
       db.close();
     }
   });
 
   test("type alias impacts entity type lookups (getEntityView returns canonical typeName)", async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'org_unit', 'String', true);
@@ -135,11 +135,11 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
         .build();
       await db.run(built.script, built.params);
 
-      await om.setProperty(db, 'emp:alias-4', 'org_unit', 'PeopleOps', {
+      await om.setProperty(runtime, 'emp:alias-4', 'org_unit', 'PeopleOps', {
         validTime: '2000-01-01T00:00:00Z',
       });
 
-      const view = await om.getEntityView(db, 'emp:alias-4');
+      const view = await om.getEntityView(runtime, 'emp:alias-4');
       expect(view).toBeTruthy();
       expect(view.typeName).toBe('Employee');
       expect(view.properties.org_unit).toBe('PeopleOps');
@@ -149,7 +149,7 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
   });
 
   test('cycle detection in resolveType', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await putAliasType(db, 'A', 'B');
       await putAliasType(db, 'B', 'A');
@@ -161,7 +161,7 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
   });
 
   test('relation alias resolves for links and explicit resolveRel', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Department', 'Department');
@@ -172,7 +172,7 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
 
       await om.createEntity(db, 'emp:alias-rel', 'Employee', 'Alice');
       await om.createEntity(db, 'dept:alias-rel', 'Department', 'Engineering');
-      await om.linkEntities(db, 'emp:alias-rel', 'member_of', 'dept:alias-rel');
+      await om.linkEntities(runtime, 'emp:alias-rel', 'member_of', 'dept:alias-rel');
 
       const neighbors = await om.getNeighbors(db, 'emp:alias-rel', 'works_in');
       expect(neighbors.outgoing.map((n) => n.entityId)).toContain('dept:alias-rel');
@@ -182,7 +182,7 @@ describe('P1/WAVE-P1-02 (T1.2.1): alias resolution', () => {
   });
 
   test('cycle detection in resolveAttr', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await putAliasAttr(db, 'Employee', 'a', 'b');

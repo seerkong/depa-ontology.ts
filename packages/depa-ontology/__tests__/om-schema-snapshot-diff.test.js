@@ -74,7 +74,7 @@ function assertSnapshotHasRequiredSections(snapshotPayload) {
   expect(s).toMatch(/perm|permission/i);
 }
 
-async function applyV1ToV2Migration(db, om) {
+async function applyV1ToV2Migration(db, runtime, om) {
   const spec = {
     migrationId: 'p2-snap-v2',
     migration_id: 'p2-snap-v2',
@@ -115,17 +115,17 @@ async function applyV1ToV2Migration(db, om) {
       },
     ],
   };
-  await om.applySchemaMigration(db, spec);
+  await om.applySchemaMigration(runtime, spec);
 }
 
 describe('P2/WAVE-P2-02: schema snapshot + diff', () => {
   test('after v1->v2 migration, snapshot is stored and readable', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
       expect(typeof om.readSchemaSnapshot).toBe('function');
 
-      await applyV1ToV2Migration(db, om);
+      await applyV1ToV2Migration(db, runtime, om);
 
       // Validate snapshot exists via stored relation.
       const row = await readSnapshotRow(db, 2);
@@ -133,7 +133,7 @@ describe('P2/WAVE-P2-02: schema snapshot + diff', () => {
       expect(isNonEmptyValue(row.snapshotJson)).toBe(true);
 
       // Validate snapshot is readable via API.
-      const snapshotPayload = await om.readSchemaSnapshot(db, 2);
+      const snapshotPayload = await om.readSchemaSnapshot(runtime, 2);
       expect(isNonEmptyValue(snapshotPayload)).toBe(true);
       assertSnapshotHasRequiredSections(snapshotPayload);
     } finally {
@@ -142,12 +142,12 @@ describe('P2/WAVE-P2-02: schema snapshot + diff', () => {
   });
 
   test('diffSchemaVersions(db, 1, 2) returns non-empty structured diff', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
       expect(typeof om.diffSchemaVersions).toBe('function');
 
-      await applyV1ToV2Migration(db, om);
+      await applyV1ToV2Migration(db, runtime, om);
 
       const diff = await om.diffSchemaVersions(db, 1, 2);
       expect(diff && typeof diff).toBe('object');

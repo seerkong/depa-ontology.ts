@@ -16,7 +16,7 @@ async function assertStoredRelationExists(db, relName, bindings) {
 
 describe('P3/WAVE-P3-01 (T3.1.1): permission metadata schema', () => {
   test('initSchema creates stored relations for permission metadata', async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     try {
       await assertStoredRelationExists(db, 'om_perm_action', {
         action: dsl.var('action'),
@@ -49,7 +49,7 @@ describe('P3/WAVE-P3-01 (T3.1.1): permission metadata schema', () => {
   });
 
   test('optional: can seed and read back permission metadata', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       if (!om || typeof om.seedPermissionMetadata !== 'function') {
         // Keep test tolerant for older builds without the seed helper.

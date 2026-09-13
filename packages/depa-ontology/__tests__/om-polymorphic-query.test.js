@@ -4,10 +4,12 @@ const { CozoDb } = require('../index');
 const om = require('../cozo-om');
 
 let db;
+let runtime;
 
 beforeAll(async () => {
   db = new CozoDb('mem', '', {});
   await om.initSchema(db);
+  runtime = om.createOmRuntime(db);
 
   // Define type hierarchy: Resource -> ExecutableResource -> ApiService
   await om.defineType(db, 'Resource', 'Base resource');
@@ -19,21 +21,21 @@ beforeAll(async () => {
 
   // 2 Resource entities
   await om.createEntity(db, 'a:1', 'Resource', 'Resource One');
-  await om.setProperty(db, 'a:1', 'value', 100);
+  await om.setProperty(runtime, 'a:1', 'value', 100);
   await om.createEntity(db, 'a:2', 'Resource', 'Resource Two');
-  await om.setProperty(db, 'a:2', 'value', 200);
+  await om.setProperty(runtime, 'a:2', 'value', 200);
 
   // 3 ExecutableResource entities
   await om.createEntity(db, 'exec:1', 'ExecutableResource', 'Executable Resource One');
-  await om.setProperty(db, 'exec:1', 'value', 300);
+  await om.setProperty(runtime, 'exec:1', 'value', 300);
   await om.createEntity(db, 'exec:2', 'ExecutableResource', 'Executable Resource Two');
-  await om.setProperty(db, 'exec:2', 'value', 400);
+  await om.setProperty(runtime, 'exec:2', 'value', 400);
   await om.createEntity(db, 'exec:3', 'ExecutableResource', 'Executable Resource Three');
-  await om.setProperty(db, 'exec:3', 'value', 500);
+  await om.setProperty(runtime, 'exec:3', 'value', 500);
 
   // 1 ApiService entity
   await om.createEntity(db, 'srv:1', 'ApiService', 'ApiService One');
-  await om.setProperty(db, 'srv:1', 'value', 600);
+  await om.setProperty(runtime, 'srv:1', 'value', 600);
 });
 
 afterAll(() => {

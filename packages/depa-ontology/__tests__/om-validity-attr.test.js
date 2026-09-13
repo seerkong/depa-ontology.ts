@@ -5,7 +5,7 @@ const dsl = require('depa-datalog');
 
 describe('temporal: Validity attribute type', () => {
   test('defineAttribute supports value_type Validity', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'valid_from', 'Validity', true);
@@ -31,14 +31,14 @@ describe('temporal: Validity attribute type', () => {
   });
 
   test('setProperty stores Validity-typed value as Validity', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'valid_from', 'Validity', false);
       await om.createEntity(db, 'emp:1', 'Employee', 'Alice');
 
       const iso = '2026-01-01T00:00:00Z';
-      await om.setProperty(db, 'emp:1', 'valid_from', iso);
+      await om.setProperty(runtime, 'emp:1', 'valid_from', iso);
 
       const expectedMicros = Date.parse(iso) * 1000;
       const res = await db.run(

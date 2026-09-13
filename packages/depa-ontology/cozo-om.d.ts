@@ -814,14 +814,86 @@ export function defineAttribute(
   required?: boolean,
   description?: string
 ): Promise<void>;
+export type RelationCardinality = 'many_to_one' | 'one_to_many' | 'many_to_many' | 'one_to_one';
+export type RelationRole = 'ownership' | 'composition' | 'association' | 'hierarchy';
+export type RelationOnDelete = 'no_action' | 'retract_edges' | 'restrict';
+
+export type RelationMeta = {
+  cardinality?: RelationCardinality;
+  optional?: boolean;
+  role?: RelationRole;
+  on_delete?: RelationOnDelete;
+};
+
+export type RelationMetaView = {
+  cardinality: RelationCardinality | null;
+  optional: boolean | null;
+  role: RelationRole | null;
+  onDelete: RelationOnDelete | null;
+};
+
+export type RelationWithMeta = {
+  name: string;
+  fromType: string;
+  toType: string;
+  directed: boolean;
+  meta: RelationMetaView | null;
+};
+
 export function defineRelation(
   runner: OmRunner,
   relName: string,
   fromType: string,
   toType: string,
   directed?: boolean,
-  description?: string
+  description?: string,
+  meta?: RelationMeta
 ): Promise<void>;
+
+/** Declare (or update) metadata for an already-defined relation. */
+export function setRelationMeta(runner: OmRunner, relName: string, meta: RelationMeta): Promise<void>;
+
+/** Read declared metadata; null when the relation declares none. */
+export function getRelationMeta(runner: OmRunner, relName: string): Promise<RelationMetaView | null>;
+
+/** Relations whose declared role marks them as ownership traversal roots. */
+export function listOwnerRelations(
+  runner: OmRunner,
+  options?: { roles?: RelationRole[] }
+): Promise<string[]>;
+
+/** Relations filtered by declared role — lets callers derive sets instead of hardcoding. */
+export function listRelationsByRole(runner: OmRunner, roles: RelationRole[]): Promise<string[]>;
+
+/** Declarative plan for "point a functional relation at a new target". */
+export type RelationSwapPlan = {
+  relName: string;
+  cardinality: RelationCardinality;
+  fromId: string;
+  toId: string;
+  /** Existing targets to retract (excludes toId, so re-pointing at the same target is a no-op). */
+  unlink: string[];
+  link: string;
+  isNoop: boolean;
+};
+
+/**
+ * Derive the swap plan from declared cardinality. Throws for many_to_many, which has
+ * no owner-replacement semantics, and for relations that declare no cardinality.
+ */
+export function deriveRelationSwap(
+  runner: OmRunner,
+  options: { fromId: string; relName: string; toId: string }
+): Promise<RelationSwapPlan>;
+
+/** Apply a swap plan (unlink olds, then link the new target). Caller owns the transaction. */
+export function applyRelationSwap(
+  runner: OmRunner,
+  plan: RelationSwapPlan & { props?: Record<string, unknown> }
+): Promise<void>;
+
+/** All relations joined with their declared metadata. */
+export function listRelationsWithMeta(runner: OmRunner): Promise<RelationWithMeta[]>;
 
 export function resolveType(runner: OmRunner, typeName: string): Promise<string>;
 export function resolveRel(runner: OmRunner, relName: string): Promise<string>;

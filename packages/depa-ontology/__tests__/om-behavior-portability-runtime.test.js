@@ -54,20 +54,16 @@ describe('OM behavior portability runtime binding', () => {
       const calls = [];
       await om.defineType(runtime, 'PortableOwner', 'portable owner');
       await om.createEntity(runtime, 'portable:1', 'PortableOwner', 'Portable 1');
-      await om.defineConstraint(runtime, 'PortableOwner', 'conditional_rule', {
-        scope: 'conditional',
-        when: () => true,
-        then: () => true,
-      });
-      await om.defineConstraint(runtime, 'PortableOwner', 'custom_rule', {
-        scope: 'custom',
-        validator: () => null,
-      });
-      await om.defineComputed(runtime, 'PortableOwner', 'computed_value', () => 1);
+      await om.defineConstraint(runtime, 'PortableOwner', 'conditional_rule', { scope: 'conditional' });
+      await om.registerConstraint(runtime, 'PortableOwner', 'conditional_rule', () => true, () => true);
+      await om.defineConstraint(runtime, 'PortableOwner', 'custom_rule', { scope: 'custom' });
+      await om.registerValidator(runtime, 'PortableOwner', 'custom_rule', () => null);
+      await om.defineComputed(runtime, 'PortableOwner', 'computed_value');
+      om.registerComputed(runtime, 'PortableOwner', 'computed_value', () => 1);
       await om.defineAction(runtime, 'PortableOwner', 'portable_action', () => []);
       await om.defineAction(runtime, 'PortableOwner', 'legacy_action', () => []);
       await om.defineMutation(runtime, 'PortableOwner', 'portable_mutation', () => {});
-      await om.addInterceptor(
+      await om.defineInterceptor(
         runtime,
         'PortableOwner',
         'portable_action',
@@ -212,16 +208,10 @@ describe('OM behavior portability runtime binding', () => {
     try {
       await om.defineType(runtime, 'Resource', 'resource');
       await om.createEntity(runtime, 'resource:1', 'Resource', 'Resource 1');
-      await om.defineConstraint(runtime, 'Resource', 'must_be_reviewed', {
-        scope: 'custom',
-        validator: () => 'Resource requires review',
-      });
-      await om.defineConstraint(runtime, 'Resource', 'must_have_owner', {
-        scope: 'conditional',
-        message: 'Resource requires an owner',
-        when: () => true,
-        then: () => true,
-      });
+      await om.defineConstraint(runtime, 'Resource', 'must_be_reviewed', { scope: 'custom' });
+      await om.registerValidator(runtime, 'Resource', 'must_be_reviewed', () => 'Resource requires review');
+      await om.defineConstraint(runtime, 'Resource', 'must_have_owner', { scope: 'conditional', message: 'Resource requires an owner' });
+      await om.registerConstraint(runtime, 'Resource', 'must_have_owner', () => true, () => true);
 
       expect(await om.validateConstraints(runtime, 'resource:1')).toEqual({
         valid: false,
@@ -252,14 +242,14 @@ describe('OM behavior portability runtime binding', () => {
           valid: false,
           errors: ["Constraint 'must_have_owner' violated: Resource requires an owner"],
         });
+      // The old mixed-form rule is gone: defineConstraint never accepts callbacks now,
+      // whatever the scope. Declaring and attaching are separate calls.
       await expect(
         om.defineConstraint(runtime, 'Resource', 'invalid_custom', {
           scope: 'custom',
-          when: () => true,
-          then: () => true,
           validator: () => null,
         })
-      ).rejects.toThrow('cannot provide when(ctx) or then(ctx)');
+      ).rejects.toThrow(/definition only/i);
     } finally {
       db.close();
       om.clearRegistry(runtime);
@@ -286,14 +276,14 @@ describe('OM behavior portability runtime binding', () => {
         () => {}
       );
 
-      await om.addInterceptor(runtime, 'Resource', 'deploy', 'before', () => {}, 'native 22');
+      await om.defineInterceptor(runtime, 'Resource', 'deploy', 'before', () => {}, 'native 22');
       let rows = await db.run(
         '?[seq] := *om_interceptor_def{type_name: "Resource", action_name: "deploy", phase: "before", seq} :sort seq'
       );
       expect(rows.rows.map(([seq]) => seq)).toEqual([7, 11, 12, 21, 22]);
 
       om.clearRegistry(runtime);
-      await om.addInterceptor(runtime, 'Resource', 'deploy', 'before', () => {}, 'native 23');
+      await om.defineInterceptor(runtime, 'Resource', 'deploy', 'before', () => {}, 'native 23');
       rows = await db.run(
         '?[seq] := *om_interceptor_def{type_name: "Resource", action_name: "deploy", phase: "before", seq} :sort seq'
       );

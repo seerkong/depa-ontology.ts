@@ -83,23 +83,21 @@ async function defineOntologyFromTables(db, tableMap) {
 
 test('org-timeline: snapshot and timeline queries work', async () => {
   const db = new CozoDb();
+  const runtime = om.createOmRuntime(db);
   try {
-    if (om && typeof om.clearRegistry === 'function') {
-      om.clearRegistry();
-    }
 
     const tableMap = tableMapFromTables(demo.defaultTables);
     await defineOntologyFromTables(db, tableMap);
 
     const attrSchema = buildAttrSchema(tableMap);
     const batch = parseSheetsIntoBatch(demo.defaultSheets, attrSchema);
-    await om.ingestBatch(db, batch);
+    await om.ingestBatch(runtime, batch);
 
-    await demo.registerBehaviors(db);
+    await demo.registerBehaviors(runtime);
 
     const snapshot = demo.queries.find((q) => q.queryId === 'snapshot_2024_12');
     expect(snapshot).toBeTruthy();
-    const snapResult = await snapshot.run(db);
+    const snapResult = await snapshot.run(runtime);
     expect(snapResult.view).toBe('table');
     expect(snapResult.data.columns).toEqual([
       'as_of',
@@ -115,7 +113,7 @@ test('org-timeline: snapshot and timeline queries work', async () => {
 
     const timeline = demo.queries.find((q) => q.queryId === 'alice_timeline');
     expect(timeline).toBeTruthy();
-    const tlResult = await timeline.run(db);
+    const tlResult = await timeline.run(runtime);
     expect(tlResult.view).toBe('table');
     expect(tlResult.data.columns).toEqual([
       'employee_id',

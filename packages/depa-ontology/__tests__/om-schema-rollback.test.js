@@ -41,7 +41,7 @@ async function listAttrNamesForType(db, typeName) {
 
 describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
   test('strict rollback blocks when target schema is tighter than current data', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
       expect(typeof om.rollbackSchema).toBe('function');
@@ -51,7 +51,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
       await om.defineAttribute(db, 'Employee', 'level', 'Number', true);
 
       // v1 -> v2: loosen Employee.level to optional String
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'rb-tighten-1',
         fromVersion: 1,
         toVersion: 2,
@@ -69,11 +69,11 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
 
       // Data that is valid in v2 but not in v1.
       await om.createEntity(db, 'emp:rb-1', 'Employee', 'Alice');
-      await om.setProperty(db, 'emp:rb-1', 'level', 'not-a-number');
+      await om.setProperty(runtime, 'emp:rb-1', 'level', 'not-a-number');
       await om.createEntity(db, 'emp:rb-2', 'Employee', 'Bob');
       // No level property (allowed in v2, required in v1)
 
-      await expect(om.rollbackSchema(db, 1, { strict: true })).rejects.toThrow(
+      await expect(om.rollbackSchema(runtime, 1, { strict: true })).rejects.toThrow(
         /strict\s+rollback\s+blocked|violates\s+schema|missing\s+required|expects/i
       );
 
@@ -85,7 +85,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
   });
 
   test('force rollback succeeds and returns diagnostics; schema state updates', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
       expect(typeof om.rollbackSchema).toBe('function');
@@ -95,7 +95,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
       await om.defineAttribute(db, 'Employee', 'level', 'Number', true);
 
       // v1 -> v2: loosen Employee.level to optional String
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'rb-force-1',
         fromVersion: 1,
         toVersion: 2,
@@ -112,9 +112,9 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
       });
 
       await om.createEntity(db, 'emp:force-1', 'Employee', 'Alice');
-      await om.setProperty(db, 'emp:force-1', 'level', 'not-a-number');
+      await om.setProperty(runtime, 'emp:force-1', 'level', 'not-a-number');
 
-      const res = await om.rollbackSchema(db, 1, { strict: false });
+      const res = await om.rollbackSchema(runtime, 1, { strict: false });
       expect(res && typeof res).toBe('object');
       expect(res.ok).toBe(true);
       expect(res.strict).toBe(false);
@@ -131,7 +131,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
   });
 
   test('alias mapping restoration: rollback restores/removes alias mapping after rename migration', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
       expect(typeof om.rollbackSchema).toBe('function');
@@ -141,7 +141,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
       await om.defineAttribute(db, 'Employee', 'org_unit', 'String', false);
 
       // v1 -> v2: rename org_unit -> department (creates alias org_unit -> department)
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'rb-alias-1',
         fromVersion: 1,
         toVersion: 2,
@@ -163,7 +163,7 @@ describe('P2/WAVE-P2-03: rollbackSchema (strict/force)', () => {
       expect(attrsV2.includes('org_unit')).toBe(false);
 
       // Roll back to v1: should remove alias and restore original attr def.
-      const res = await om.rollbackSchema(db, 1, { strict: true });
+      const res = await om.rollbackSchema(runtime, 1, { strict: true });
       expect(res.ok).toBe(true);
       expect(res.targetVersion).toBe(1);
       expect(res.fromVersion).toBe(2);

@@ -85,24 +85,22 @@ async function defineOntologyFromTables(db, tableMap) {
 
 test('approval-flow: timeline query uses om temporal API', async () => {
   const db = new CozoDb();
+  const runtime = om.createOmRuntime(db);
   try {
-    if (om && typeof om.clearRegistry === 'function') {
-      om.clearRegistry();
-    }
 
     const tableMap = tableMapFromTables(demo.defaultTables);
     await defineOntologyFromTables(db, tableMap);
 
     const attrSchema = buildAttrSchema(tableMap);
     const batch = parseSheetsIntoBatch(demo.defaultSheets, attrSchema);
-    await om.ingestBatch(db, batch);
+    await om.ingestBatch(runtime, batch);
 
-    await demo.registerBehaviors(db);
+    await demo.registerBehaviors(runtime);
 
     const q = demo.queries.find((x) => x.queryId === 'timelineAfterApprove');
     expect(q).toBeTruthy();
 
-    const result = await q.run(db);
+    const result = await q.run(runtime);
     expect(result.view).toBe('table');
     expect(result.data).toBeTruthy();
     expect(result.data.columns).toEqual([

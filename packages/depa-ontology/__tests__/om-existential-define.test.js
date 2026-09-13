@@ -6,11 +6,11 @@ const om = require('../cozo-om');
 const { createTestDb } = require('./helpers');
 
 async function createOrderShipmentDb() {
-  const { db } = await createTestDb();
+  const { db , runtime } = await createTestDb();
   await om.defineType(db, 'Order', 'Order');
   await om.defineType(db, 'Shipment', 'Shipment');
   await om.defineRelation(db, 'has_shipment', 'Order', 'Shipment', true);
-  return db;
+  return { db, runtime };
 }
 
 describe('OM-024: existential rule definition and persistence', () => {
@@ -28,7 +28,7 @@ describe('OM-024: existential rule definition and persistence', () => {
   });
 
   test('initSchema is idempotent and preserves existing rule definitions', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await om.defineExistentialRule(db, 'order_must_have_shipment', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -45,7 +45,7 @@ describe('OM-024: existential rule definition and persistence', () => {
   });
 
   test('defineExistentialRule persists and listExistentialRules returns it', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
 
     await om.defineExistentialRule(db, 'order_must_have_shipment', {
       forEach: { type: 'Order' },
@@ -68,7 +68,7 @@ describe('OM-024: existential rule definition and persistence', () => {
   });
 
   test('redefining the same rule name is an upsert', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
 
     await om.defineExistentialRule(db, 'r1', {
       forEach: { type: 'Order' },
@@ -89,13 +89,13 @@ describe('OM-024: existential rule definition and persistence', () => {
   });
 
   test('listExistentialRules returns [] on a fresh schema', async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     const rules = await om.listExistentialRules(db);
     expect(rules).toEqual([]);
   });
 
   test('enabled flag is persisted and returned', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await om.defineExistentialRule(db, 'r_disabled', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -108,14 +108,14 @@ describe('OM-024: existential rule definition and persistence', () => {
 
 describe('OM-024: invalid spec rejection (T1.2)', () => {
   test('rejects spec without forEach.type', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await expect(
       om.defineExistentialRule(db, 'bad', { forEach: {}, exists: { rel: 'has_shipment', toType: 'Shipment' } })
     ).rejects.toThrow(/forEach\.type/);
   });
 
   test('rejects spec without exists.rel or exists.toType', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await expect(
       om.defineExistentialRule(db, 'bad', { forEach: { type: 'Order' }, exists: { toType: 'Shipment' } })
     ).rejects.toThrow(/exists\.rel/);
@@ -125,7 +125,7 @@ describe('OM-024: invalid spec rejection (T1.2)', () => {
   });
 
   test('rejects unknown forEach.type / exists.toType / exists.rel', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await expect(
       om.defineExistentialRule(db, 'bad', { forEach: { type: 'Nope' }, exists: { rel: 'has_shipment', toType: 'Shipment' } })
     ).rejects.toThrow(/Unknown type/);
@@ -138,7 +138,7 @@ describe('OM-024: invalid spec rejection (T1.2)', () => {
   });
 
   test('rejects invalid mode and invalid where op', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await expect(
       om.defineExistentialRule(db, 'bad', {
         forEach: { type: 'Order' },
@@ -155,7 +155,7 @@ describe('OM-024: invalid spec rejection (T1.2)', () => {
   });
 
   test('rejects where entry without an explicit value (silent dead-rule guard)', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     // JSON persistence drops undefined keys, so an omitted value would be
     // stored as { attr, op } and the rule would silently never match.
     await expect(
@@ -182,7 +182,7 @@ describe('OM-024: invalid spec rejection (T1.2)', () => {
   });
 
   test('rejected define does not persist anything', async () => {
-    const db = await createOrderShipmentDb();
+    const { db, runtime } = await createOrderShipmentDb();
     await om
       .defineExistentialRule(db, 'bad', { forEach: { type: 'Nope' }, exists: { rel: 'has_shipment', toType: 'Shipment' } })
       .catch(() => {});
@@ -204,7 +204,7 @@ async function putAliasType(db, alias, canonical) {
 
 describe('OM-024: alias canonicalization on define (T1.2)', () => {
   test('rule defined via alias names is persisted with canonical names', async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     await om.defineType(db, 'PurchaseOrder', 'Purchase order');
     await om.defineType(db, 'Shipment', 'Shipment');
     await om.defineRelation(db, 'has_shipment', 'PurchaseOrder', 'Shipment', true);

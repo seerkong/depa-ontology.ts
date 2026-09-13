@@ -70,16 +70,16 @@ describe('Phase 2 (track add-action-and-constraints): schema extensions', () => 
   });
 
   test('backward compat: existing OM APIs still work after initSchema', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om, runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
 
       await om.createEntity(db, 'resource:1', 'Resource', 'Resource #1');
-      await om.setProperty(db, 'resource:1', 'name', 'Printer');
-      await om.finalizeEntity(db, 'resource:1');
+      await om.setProperty(runtime, 'resource:1', 'name', 'Printer');
+      await om.finalizeEntity(runtime, 'resource:1');
 
-      const view = await om.getEntityView(db, 'resource:1');
+      const view = await om.getEntityView(runtime, 'resource:1');
       expect(view).toBeTruthy();
       expect(view.id).toBe('resource:1');
       expect(view.typeName).toBe('Resource');
@@ -89,16 +89,16 @@ describe('Phase 2 (track add-action-and-constraints): schema extensions', () => 
     }
   });
 
-  test('clearRegistry exists and is callable', async () => {
-    const { db, om } = await createTestDb();
+  test('clearRegistry requires a runtime and is callable with one', async () => {
+    const { db, om, runtime } = await createTestDb();
     try {
       expect(typeof om.clearRegistry).toBe('function');
-      expect(() => om.clearRegistry()).not.toThrow();
+      expect(() => om.clearRegistry(runtime)).not.toThrow();
 
       // Clearing registries should not affect core schema/data APIs.
       await om.defineType(db, 'Resource', 'Resource');
       await om.createEntity(db, 'resource:2', 'Resource', 'Resource #2');
-      const view = await om.getEntityView(db, 'resource:2');
+      const view = await om.getEntityView(runtime, 'resource:2');
       expect(view.id).toBe('resource:2');
     } finally {
       db.close();
@@ -106,26 +106,27 @@ describe('Phase 2 (track add-action-and-constraints): schema extensions', () => 
   });
 
   test('behavior definitions reject invalid owners, scopes, and phases before effects', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om, runtime } = await createTestDb();
     try {
+      // A bare runner is refused before the owner check even runs.
       await expect(
-        om.defineAction(db, 'MissingOwner', 'guarded_action', async () => [])
+        om.defineAction(db, 'MissingOwner', 'guarded_action')
+      ).rejects.toThrow(/createOmRuntime/);
+
+      await expect(
+        om.defineAction(runtime, 'MissingOwner', 'guarded_action')
       ).rejects.toThrow(/does not exist/i);
 
       await om.defineType(db, 'GuardOwner', 'Guard owner');
       await om.createEntity(db, 'guard:owner', 'GuardOwner', 'Guard owner');
 
       await expect(
-        om.defineConstraint(db, 'GuardOwner', 'invalid_scope', {
-          scope: 'request',
-          when: async () => true,
-          then: async () => true,
-        })
+        om.defineConstraint(runtime, 'GuardOwner', 'invalid_scope', { scope: 'request' })
       ).rejects.toThrow(/Unsupported constraint scope/i);
 
       const interceptorEvents = [];
       await expect(
-        om.addInterceptor(db, 'GuardOwner', 'guarded_action', 'around', async () => {
+        om.defineInterceptor(runtime, 'GuardOwner', 'guarded_action', 'around', async () => {
           interceptorEvents.push('invalid');
         })
       ).rejects.toThrow(/before.*after/i);
@@ -167,11 +168,12 @@ describe('Phase 2 (track add-action-and-constraints): schema extensions', () => 
         expect((await db.run(queryResult.script, queryResult.params)).rows).toHaveLength(0);
       }
 
-      await om.defineAction(db, 'GuardOwner', 'guarded_action', async () => []);
-      await om.addInterceptor(db, 'GuardOwner', 'guarded_action', 'before', async () => {
+      await om.defineAction(runtime, 'GuardOwner', 'guarded_action');
+      om.registerAction(runtime, 'GuardOwner', 'guarded_action', async () => []);
+      await om.defineInterceptor(runtime, 'GuardOwner', 'guarded_action', 'before', async () => {
         interceptorEvents.push('valid');
       });
-      await om.executeAction(db, 'guard:owner', 'guarded_action', {});
+      await om.executeAction(runtime, 'guard:owner', 'guarded_action', {});
       expect(interceptorEvents).toEqual(['valid']);
     } finally {
       db.close();

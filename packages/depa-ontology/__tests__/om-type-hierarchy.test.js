@@ -3,7 +3,7 @@ const { createTestDb, createTestDbWithHierarchy } = require('./helpers');
 
 describe('defineType inheritance validation', () => {
   test('defineType with parentType works and persists parent_type', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineType(db, 'ExecutableResource', 'Executable Resource', { parentType: 'Resource' });
@@ -16,7 +16,7 @@ describe('defineType inheritance validation', () => {
   });
 
   test('defineType with missing parentType throws', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await expect(
         om.defineType(db, 'Orphan', 'Orphan', { parentType: 'NonExistent' })
@@ -27,7 +27,7 @@ describe('defineType inheritance validation', () => {
   });
 
   test('defineType detects circular inheritance (A->B, then B parent to A)', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'A', 'Type A');
       await om.defineType(db, 'B', 'Type B', { parentType: 'A' });
@@ -42,7 +42,7 @@ describe('defineType inheritance validation', () => {
   });
 
   test('defineType detects self-referencing parent', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'X', 'Type X');
       await expect(
@@ -54,7 +54,7 @@ describe('defineType inheritance validation', () => {
   });
 
   test('defineType without options preserves existing parent and mixins', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Auditable');
       await om.defineType(db, 'Resource', 'Resource');
@@ -74,7 +74,7 @@ describe('defineType inheritance validation', () => {
   });
 
   test('defineType with explicit null parentType clears the existing parent', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineType(db, 'ApiService', 'ApiService', { parentType: 'Resource' });
@@ -93,7 +93,7 @@ describe('defineType inheritance validation', () => {
 
 describe('getAncestors', () => {
   test('getAncestors(ApiService) returns [ExecutableResource, Resource]', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const ancestors = await om.getAncestors(db, 'ApiService');
       expect(ancestors).toEqual(['ExecutableResource', 'Resource']);
@@ -103,7 +103,7 @@ describe('getAncestors', () => {
   });
 
   test('getAncestors of root type returns empty array', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const ancestors = await om.getAncestors(db, 'Resource');
       expect(ancestors).toEqual([]);
@@ -115,7 +115,7 @@ describe('getAncestors', () => {
 
 describe('getDescendants', () => {
   test('getDescendants(Resource) contains ExecutableResource, ApiService, Worker, Dataset', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const descendants = await om.getDescendants(db, 'Resource');
       expect(descendants).toContain('ExecutableResource');
@@ -129,7 +129,7 @@ describe('getDescendants', () => {
   });
 
   test('getDescendants of leaf type returns empty array', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const descendants = await om.getDescendants(db, 'ApiService');
       expect(descendants).toEqual([]);
@@ -141,7 +141,7 @@ describe('getDescendants', () => {
 
 describe('isSubtypeOf', () => {
   test('isSubtypeOf(ApiService, Resource) is true', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const result = await om.isSubtypeOf(db, 'ApiService', 'Resource');
       expect(result).toBe(true);
@@ -151,7 +151,7 @@ describe('isSubtypeOf', () => {
   });
 
   test('isSubtypeOf(Resource, ApiService) is false', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const result = await om.isSubtypeOf(db, 'Resource', 'ApiService');
       expect(result).toBe(false);
@@ -161,7 +161,7 @@ describe('isSubtypeOf', () => {
   });
 
   test('isSubtypeOf(ApiService, ApiService) is true (identity)', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const result = await om.isSubtypeOf(db, 'ApiService', 'ApiService');
       expect(result).toBe(true);
@@ -171,7 +171,7 @@ describe('isSubtypeOf', () => {
   });
 
   test('isSubtypeOf(Dataset, ExecutableResource) is false (sibling branches)', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const result = await om.isSubtypeOf(db, 'Dataset', 'ExecutableResource');
       expect(result).toBe(false);
@@ -183,7 +183,7 @@ describe('isSubtypeOf', () => {
 
 describe('getTypeHierarchy', () => {
   test('returns roots including Resource and types include all defined types', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       const hierarchy = await om.getTypeHierarchy(db);
 
@@ -207,7 +207,7 @@ describe('getTypeHierarchy', () => {
   });
 
   test('multiple roots when hierarchy has independent trees', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineType(db, 'Person', 'Person');

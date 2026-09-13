@@ -4,18 +4,18 @@ const om = require('../cozo-om');
 const { createTestDb } = require('./helpers');
 
 async function createOrderWorld() {
-  const { db } = await createTestDb();
+  const { db , runtime } = await createTestDb();
   await om.defineType(db, 'Order', 'Order');
   await om.defineType(db, 'RushOrder', 'Rush order', { parentType: 'Order' });
   await om.defineType(db, 'Shipment', 'Shipment');
   await om.defineType(db, 'ExpressShipment', 'Express shipment', { parentType: 'Shipment' });
   await om.defineRelation(db, 'has_shipment', 'Order', 'Shipment', true);
-  return db;
+  return { db, runtime };
 }
 
 describe('OM-025: checkExistentialRules basic detection', () => {
   test('reports entity missing the edge, skips satisfied entity', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'order_must_have_shipment', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -25,7 +25,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
     await om.createEntity(db, 'o1', 'Order', 'order 1');
     await om.createEntity(db, 'o2', 'Order', 'order 2');
     await om.createEntity(db, 's1', 'Shipment', 'shipment 1');
-    await om.linkEntities(db, 'o2', 'has_shipment', 's1');
+    await om.linkEntities(runtime, 'o2', 'has_shipment', 's1');
 
     const violations = await om.checkExistentialRules(db);
     expect(violations).toEqual([
@@ -34,7 +34,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
   });
 
   test('polymorphic body and head matching', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'order_must_have_shipment', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -43,7 +43,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
     // RushOrder instance satisfied via an ExpressShipment (both are subtypes).
     await om.createEntity(db, 'ro1', 'RushOrder', 'rush order 1');
     await om.createEntity(db, 'es1', 'ExpressShipment', 'express shipment 1');
-    await om.linkEntities(db, 'ro1', 'has_shipment', 'es1');
+    await om.linkEntities(runtime, 'ro1', 'has_shipment', 'es1');
     // RushOrder instance without any shipment.
     await om.createEntity(db, 'ro2', 'RushOrder', 'rush order 2');
 
@@ -52,7 +52,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
   });
 
   test('disabled rules are skipped and options.rules filters', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'r_enabled', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -72,7 +72,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
   });
 
   test("direction 'in' requires an incoming edge", async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     await om.defineType(db, 'Employee', 'Employee');
     await om.defineType(db, 'Department', 'Department');
     await om.defineRelation(db, 'belongs_to', 'Employee', 'Department', true);
@@ -84,14 +84,14 @@ describe('OM-025: checkExistentialRules basic detection', () => {
     await om.createEntity(db, 'd1', 'Department', 'staffed dept');
     await om.createEntity(db, 'd2', 'Department', 'empty dept');
     await om.createEntity(db, 'e1', 'Employee', 'employee 1');
-    await om.linkEntities(db, 'e1', 'belongs_to', 'd1');
+    await om.linkEntities(runtime, 'e1', 'belongs_to', 'd1');
 
     const violations = await om.checkExistentialRules(db);
     expect(violations.map((v) => v.entityId)).toEqual(['d2']);
   });
 
   test('violations are sorted by rule then entityId', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'b_rule', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -113,7 +113,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
   });
 
   test('edge to wrong target type does not satisfy the rule', async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     await om.defineType(db, 'Order', 'Order');
     await om.defineType(db, 'Shipment', 'Shipment');
     await om.defineType(db, 'Document', 'Document');
@@ -129,7 +129,7 @@ describe('OM-025: checkExistentialRules basic detection', () => {
 
     await om.createEntity(db, 'o1', 'Order', 'order 1');
     await om.createEntity(db, 'doc1', 'AttachableDoc', 'doc 1');
-    await om.linkEntities(db, 'o1', 'attached_to', 'doc1');
+    await om.linkEntities(runtime, 'o1', 'attached_to', 'doc1');
 
     const violations = await om.checkExistentialRules(db);
     expect(violations.map((v) => v.entityId)).toEqual(['o1']);

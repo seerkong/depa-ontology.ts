@@ -21,8 +21,12 @@ const {
 } = require('./operations');
 
 // cozo-om keeps its behavior registries at module scope (global per process).
-// /api/run clears and repopulates the registry per request, so concurrent runs can race.
-// This queue serializes those runs (FIFO) to prevent interleaving.
+// Serializes the two routes that REPLACE a shared db binding (/governance/seed and
+// /governance/integrity/seed-demo) so a request cannot observe a half-swapped handle.
+//
+// It used to guard every route because the behavior registry was a process-wide
+// singleton; registries are now per-runtime (see createOmRuntime), so the other routes
+// no longer share mutable state and run concurrently.
 function createSerialQueue() {
   let tail = Promise.resolve();
   return function withLock(fn) {
@@ -404,10 +408,18 @@ function createApp(options) {
     });
   }
   const sharedDb = opts.db || new CozoDb();
+  // The shared schema/governance db gets its own runtime so those routes resolve a
+  // registry explicitly instead of relying on a process-wide one.
+  const sharedRuntime = om.createOmRuntime(sharedDb);
   let governanceDb = opts.governanceDb || new CozoDb();
+  // Kept in step with governanceDb: /governance/seed swaps the db, so the runtime
+  // (and therefore the registry those routes read) is rebuilt with it.
+  let governanceRuntime = om.createOmRuntime(governanceDb);
   // The integrity demo keeps its own db so /api/governance/seed (used by the
   // 数据准备 tab and other test files running in parallel) cannot wipe it.
   let integrityDb = opts.integrityDb || new CozoDb();
+  // Same pattern as governanceRuntime: integrity/seed-demo swaps the db.
+  let integrityRuntime = om.createOmRuntime(integrityDb);
 
   const app = new Elysia()
     .use(cors())
@@ -450,15 +462,12 @@ function createApp(options) {
       // sheets currently come from workbook tables, but keep it in the request shape.
       void sheets;
 
-      return withOmRegistryLock(async () => {
+      return (async () => {
         const db = new CozoDb();
+        // A scratch db gets a scratch runtime: behaviors registered for this run stay
+        // in this run's registry and cannot leak into another request or demo.
+        const runtime = om.createOmRuntime(db);
         try {
-          // Registries in cozo-om are module-level, so clear them per run to avoid
-          // cross-request / cross-demo handler leakage.
-          if (om && typeof om.clearRegistry === 'function') {
-            om.clearRegistry();
-          }
-
           // 1. Define ontology (types, attrs, rels)
           const inputTables = Array.isArray(tables) && tables.length > 0 ? tables : demo.defaultTables;
           const tableMap = tableMapFromTables(inputTables);
@@ -469,16 +478,16 @@ function createApp(options) {
           // 2. Ingest sheet data (use provided sheets or fall back to defaults)
           const dataSheets = tablesToDataSheets(tableMap);
           const batch = parseSheetsIntoBatch(dataSheets, attrSchema);
-          await om.ingestBatch(db, batch);
+          await om.ingestBatch(runtime, batch);
 
           // 2.5 Register JS-only behavior layer (actions/constraints/computed)
           // These handlers are not represented in the workbook tables.
           if (typeof demo.registerBehaviors === 'function') {
-            await demo.registerBehaviors(db);
+            await demo.registerBehaviors(runtime);
           }
 
           // 3. Execute query
-          const result = await queryDef.run(db);
+          const result = await queryDef.run(runtime);
 
           if (result.view === 'graph') {
             return {
@@ -506,7 +515,7 @@ function createApp(options) {
         } finally {
           try { db.close(); } catch (_) { /* ignore */ }
         }
-      });
+      })();
     })
 
     // GET /api/permission/models — list permission demo models
@@ -562,51 +571,51 @@ function createApp(options) {
 
     // GET /api/schema/state
     .get('/api/schema/state', async () => {
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(sharedDb);
         return await om.getSchemaState(sharedDb);
-      });
+      })();
     })
 
     // GET /api/schema/versions
     .get('/api/schema/versions', async () => {
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(sharedDb);
         const versions = await om.listSchemaVersions(sharedDb);
         return { versions };
-      });
+      })();
     })
 
     // POST /api/schema/diff { fromVersion, toVersion }
     .post('/api/schema/diff', async ({ body }) => {
       const { fromVersion, toVersion } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(sharedDb);
         const diff = await om.diffSchemaVersions(sharedDb, fromVersion, toVersion);
         return { diff };
-      });
+      })();
     })
 
     // POST /api/schema/apply { spec }
     .post('/api/schema/apply', async ({ body }) => {
       const { spec } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(sharedDb);
-        await om.applySchemaMigration(sharedDb, spec);
+        await om.applySchemaMigration(sharedRuntime, spec);
         const state = await om.getSchemaState(sharedDb);
         return { ok: true, state };
-      });
+      })();
     })
 
     // POST /api/schema/rollback { targetVersion, strict }
     .post('/api/schema/rollback', async ({ body }) => {
       const { targetVersion, strict } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(sharedDb);
-        const result = await om.rollbackSchema(sharedDb, targetVersion, { strict: strict !== false });
+        const result = await om.rollbackSchema(sharedRuntime, targetVersion, { strict: strict !== false });
         const state = await om.getSchemaState(sharedDb);
         return { ok: true, result, state };
-      });
+      })();
     })
 
     // GET /api/governance/seed-template
@@ -620,11 +629,9 @@ function createApp(options) {
       const tables = body && typeof body === 'object' ? body.tables : undefined;
       return withOmRegistryLock(async () => {
         const nextDb = new CozoDb();
+        const nextRuntime = om.createOmRuntime(nextDb);
         try {
-          if (om && typeof om.clearRegistry === 'function') {
-            om.clearRegistry();
-          }
-          await seedGovernanceFromTables(nextDb, tables);
+          await seedGovernanceFromTables(nextRuntime, tables);
         } catch (err) {
           try { nextDb.close(); } catch (_) { /* ignore */ }
           throw err;
@@ -632,6 +639,7 @@ function createApp(options) {
 
         try { governanceDb.close(); } catch (_) { /* ignore */ }
         governanceDb = nextDb;
+        governanceRuntime = om.createOmRuntime(governanceDb);
 
         return { ok: true, subjectId: 'u:1', resourceId: 'r:1', action: 'read' };
       });
@@ -640,22 +648,22 @@ function createApp(options) {
     // POST /api/governance/checkAccess { subjectId, action, resourceId }
     .post('/api/governance/checkAccess', async ({ body }) => {
       const { subjectId, action, resourceId } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(governanceDb);
-        const result = await om.checkAccess(governanceDb, { subjectId, action, resourceId });
+        const result = await om.checkAccess(governanceRuntime, { subjectId, action, resourceId });
         return { result };
-      });
+      })();
     })
 
     // POST /api/governance/explain { subjectId, action, resourceId }
     // Alias for checkAccess (result includes explanation).
     .post('/api/governance/explain', async ({ body }) => {
       const { subjectId, action, resourceId } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(governanceDb);
-        const result = await om.checkAccess(governanceDb, { subjectId, action, resourceId });
+        const result = await om.checkAccess(governanceRuntime, { subjectId, action, resourceId });
         return { result };
-      });
+      })();
     })
 
     // POST /api/governance/integrity/seed-demo — deterministic reset:
@@ -663,12 +671,10 @@ function createApp(options) {
     .post('/api/governance/integrity/seed-demo', async () => {
       return withOmRegistryLock(async () => {
         const nextDb = new CozoDb();
+        const nextRuntime = om.createOmRuntime(nextDb);
         let rules;
         try {
-          if (om && typeof om.clearRegistry === 'function') {
-            om.clearRegistry();
-          }
-          rules = await seedIntegrityDemo(nextDb);
+          rules = await seedIntegrityDemo(nextRuntime);
         } catch (err) {
           try { nextDb.close(); } catch (_) { /* ignore */ }
           throw err;
@@ -676,6 +682,7 @@ function createApp(options) {
 
         try { integrityDb.close(); } catch (_) { /* ignore */ }
         integrityDb = nextDb;
+        integrityRuntime = om.createOmRuntime(integrityDb);
 
         return { ok: true, rules };
       });
@@ -683,43 +690,43 @@ function createApp(options) {
 
     // GET /api/governance/integrity/rules
     .get('/api/governance/integrity/rules', async () => {
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(integrityDb);
         const rules = await om.listExistentialRules(integrityDb);
         return { rules };
-      });
+      })();
     })
 
     // POST /api/governance/integrity/check { rules?, asOf? }
     .post('/api/governance/integrity/check', async ({ body }) => {
       const { rules, asOf } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(integrityDb);
         const violations = await om.checkExistentialRules(integrityDb, {
           ...(Array.isArray(rules) && rules.length ? { rules } : {}),
           ...(asOf ? { asOf } : {}),
         });
         return { violations };
-      });
+      })();
     })
 
     // POST /api/governance/integrity/apply { rules?, maxIterations? }
     .post('/api/governance/integrity/apply', async ({ body }) => {
       const { rules, maxIterations } = body || {};
-      return withOmRegistryLock(async () => {
+      return (async () => {
         await om.initSchema(integrityDb);
-        const result = await om.applyExistentialRules(integrityDb, {
+        const result = await om.applyExistentialRules(integrityRuntime, {
           ...(Array.isArray(rules) && rules.length ? { rules } : {}),
           ...(maxIterations != null ? { maxIterations } : {}),
         });
         return { ok: true, result };
-      });
+      })();
     })
 
     // GET /api/demos/:id/projection — OntologyProjection for a demo
     .get('/api/demos/:id/projection', async ({ params }) => {
       const demoId = params.id;
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           const projection = await getDemoProjection(demoId);
           return { status: 'ok', projection };
@@ -728,14 +735,14 @@ function createApp(options) {
           const status = err.status === 404 ? 'error' : 'error';
           return { status, error: message };
         }
-      });
+      })();
     })
 
     // GET /api/demos/:id/objects/:typeName — list entities of a type
     .get('/api/demos/:id/objects/:typeName', async ({ params, query }) => {
       const demoId = params.id;
       const typeName = params.typeName;
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           const filter = query && query.filter ? JSON.parse(query.filter) : {};
           const entities = await listObjectsByType(demoId, typeName, filter);
@@ -744,13 +751,13 @@ function createApp(options) {
           const message = err.display || err.message || String(err);
           return { status: 'error', error: message };
         }
-      });
+      })();
     })
 
     // GET /api/demos/:id/objects/:typeName/:entityId — entity detail + links
     .get('/api/demos/:id/objects/:typeName/:entityId', async ({ params }) => {
       const { id: demoId, typeName, entityId } = params;
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           const entity = await getObjectDetail(demoId, typeName, entityId);
           return { status: 'ok', entity };
@@ -758,14 +765,14 @@ function createApp(options) {
           const message = err.display || err.message || String(err);
           return { status: 'error', error: message };
         }
-      });
+      })();
     })
 
     // GET /api/demos/:id/graph/impact/:entityId — OM impactAnalysis (no JOIN)
     .get('/api/demos/:id/graph/impact/:entityId', async ({ params, query }) => {
       const demoId = params.id;
       const entityId = decodeURIComponent(params.entityId);
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           const graph = await getImpactGraph(demoId, entityId, {
             maxDepth: query && query.maxDepth,
@@ -777,14 +784,14 @@ function createApp(options) {
           const message = err.display || err.message || String(err);
           return { status: 'error', error: message };
         }
-      });
+      })();
     })
 
     // GET /api/demos/:id/graph/tree/:entityId — OM ownershipTree
     .get('/api/demos/:id/graph/tree/:entityId', async ({ params, query }) => {
       const demoId = params.id;
       const entityId = decodeURIComponent(params.entityId);
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           const tree = await getOwnershipTree(demoId, entityId, {
             maxDepth: query && query.maxDepth,
@@ -795,7 +802,7 @@ function createApp(options) {
           const message = err.display || err.message || String(err);
           return { status: 'error', error: message };
         }
-      });
+      })();
     })
 
     // GET /api/demos/:demoId/operations — OntologyOperation list
@@ -826,14 +833,14 @@ function createApp(options) {
     // POST /api/demos/:demoId/invoke — OntologyOperation invoke
     .post('/api/demos/:id/invoke', async ({ params, body }) => {
       const demoId = params.id;
-      return withOmRegistryLock(async () => {
+      return (async () => {
         try {
           return await invokeOperation(demoId, body || {});
         } catch (err) {
           const message = err.display || err.message || String(err);
           return { status: 'error', ok: false, error: { code: 'RUNTIME', message } };
         }
-      });
+      })();
     });
 
   function close() {

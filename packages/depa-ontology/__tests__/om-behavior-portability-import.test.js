@@ -333,7 +333,11 @@ describe('OM behavior portability atomic import', () => {
 
     try {
       await om.defineType(runtime, 'ImportOwner', 'import owner');
-      await om.defineAction(runtime, 'ImportOwner', 'inspect', () => [], 'old');
+      await om.registerAction(
+        runtime, 'ImportOwner', 'inspect',
+        () => []
+      );
+      await om.defineAction(runtime, 'ImportOwner', 'inspect', 'old');
       const baseline = await om.exportBehaviorManifestJson(runtime);
       const json = manifest([
         behavior('action', 'ImportOwner', 'inspect', 'handler', 'id:action', {
@@ -487,6 +491,7 @@ describe('OM behavior portability atomic import', () => {
 
       expect((await importPromise).applied).toBe(true);
       expect(entry(await reader, 'action', 'inspect').callbacks[0].readiness).toBe('ready');
+      // The other runtime over the same db must NOT see the imported behavior.
       expect(entry(await om.getBehaviorCatalog(right), 'action', 'inspect').callbacks[0])
         .toEqual({
           slot: 'handler',
@@ -530,7 +535,11 @@ describe('OM behavior portability atomic import', () => {
 
     try {
       await om.defineType(runtime, 'ImportOwner', 'import owner');
-      await om.defineAction(runtime, 'ImportOwner', 'inspect', () => [], 'old');
+      await om.registerAction(
+        runtime, 'ImportOwner', 'inspect',
+        () => []
+      );
+      await om.defineAction(runtime, 'ImportOwner', 'inspect', 'old');
       const json = manifest([
         behavior('action', 'ImportOwner', 'inspect', 'handler', 'id:action', {
           description: 'changed',

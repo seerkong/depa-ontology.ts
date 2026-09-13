@@ -109,7 +109,7 @@ const defaultTables = [
 
 // -- Behavior layer ------------------------------------------------------------
 
-async function registerBehaviors(db) {
+async function registerBehaviors(runtime) {
   // Seed temporal org changes.
   // ValidTime values are in the past so NOW semantics still show the latest assignment.
   // NOTE: avoid using the same timestamp for RETRACT + ASSERT transitions.
@@ -122,24 +122,24 @@ async function registerBehaviors(db) {
   const t4 = '2025-06-01T00:00:00Z';
 
   // Alice moves: Eng -> Product -> Ops
-  await om.linkEntities(db, 'emp:alice', 'belongs_to', 'dept:eng', { reason: 'join' }, { validTime: t1 });
-  await om.unlinkEntities(db, 'emp:alice', 'belongs_to', 'dept:eng', { validTime: t2r });
-  await om.linkEntities(db, 'emp:alice', 'belongs_to', 'dept:product', { reason: 'transfer' }, { validTime: t2 });
-  await om.unlinkEntities(db, 'emp:alice', 'belongs_to', 'dept:product', { validTime: t3r });
-  await om.linkEntities(db, 'emp:alice', 'belongs_to', 'dept:ops', { reason: 'reorg' }, { validTime: t3 });
+  await om.linkEntities(runtime, 'emp:alice', 'belongs_to', 'dept:eng', { reason: 'join' }, { validTime: t1 });
+  await om.unlinkEntities(runtime, 'emp:alice', 'belongs_to', 'dept:eng', { validTime: t2r });
+  await om.linkEntities(runtime, 'emp:alice', 'belongs_to', 'dept:product', { reason: 'transfer' }, { validTime: t2 });
+  await om.unlinkEntities(runtime, 'emp:alice', 'belongs_to', 'dept:product', { validTime: t3r });
+  await om.linkEntities(runtime, 'emp:alice', 'belongs_to', 'dept:ops', { reason: 'reorg' }, { validTime: t3 });
 
   // Bob stays in Eng
-  await om.linkEntities(db, 'emp:bob', 'belongs_to', 'dept:eng', { reason: 'join' }, { validTime: '2024-03-01T00:00:00Z' });
+  await om.linkEntities(runtime, 'emp:bob', 'belongs_to', 'dept:eng', { reason: 'join' }, { validTime: '2024-03-01T00:00:00Z' });
 
   // Carol moves: Product -> Eng
-  await om.linkEntities(db, 'emp:carol', 'belongs_to', 'dept:product', { reason: 'join' }, { validTime: '2024-05-01T00:00:00Z' });
-  await om.unlinkEntities(db, 'emp:carol', 'belongs_to', 'dept:product', { validTime: t4r });
-  await om.linkEntities(db, 'emp:carol', 'belongs_to', 'dept:eng', { reason: 'transfer' }, { validTime: t4 });
+  await om.linkEntities(runtime, 'emp:carol', 'belongs_to', 'dept:product', { reason: 'join' }, { validTime: '2024-05-01T00:00:00Z' });
+  await om.unlinkEntities(runtime, 'emp:carol', 'belongs_to', 'dept:product', { validTime: t4r });
+  await om.linkEntities(runtime, 'emp:carol', 'belongs_to', 'dept:eng', { reason: 'transfer' }, { validTime: t4 });
 
   // Manager assignments (temporal)
-  await om.linkEntities(db, 'emp:alice', 'manages', 'team:platform', { since: t2 }, { validTime: t2 });
-  await om.unlinkEntities(db, 'emp:alice', 'manages', 'team:platform', { validTime: t3r });
-  await om.linkEntities(db, 'emp:alice', 'manages', 'team:growth', { since: t3 }, { validTime: t3 });
+  await om.linkEntities(runtime, 'emp:alice', 'manages', 'team:platform', { since: t2 }, { validTime: t2 });
+  await om.unlinkEntities(runtime, 'emp:alice', 'manages', 'team:platform', { validTime: t3r });
+  await om.linkEntities(runtime, 'emp:alice', 'manages', 'team:growth', { since: t3 }, { validTime: t3 });
 }
 
 // -- Query helpers -------------------------------------------------------------
@@ -194,13 +194,13 @@ async function deptHeadcountAsOf(db, asOfIso) {
   return { columns, rows };
 }
 
-async function employeeMoveTimeline(db, employeeId) {
-  const hist = await om.getEdgeHistory(db, employeeId, 'belongs_to');
+async function employeeMoveTimeline(runtime, employeeId) {
+  const hist = await om.getEdgeHistory(runtime.runner, employeeId, 'belongs_to');
   const columns = ['employee_id', 'valid_time', 'event', 'department_id', 'department_label'];
   const rows = [];
 
   for (const h of hist) {
-    const view = await om.getEntityView(db, h.toId);
+    const view = await om.getEntityView(runtime, h.toId);
     rows.push({
       employee_id: employeeId,
       valid_time: h.valid_time,
@@ -247,10 +247,10 @@ const queries = [
     queryId: 'alice_timeline',
     label: '时间轴：Alice 调动',
     meaning: '查看 Alice 的部门调动时间轴（edge history）',
-    dsl: "await employeeMoveTimeline(db, 'emp:alice')",
+    dsl: "await employeeMoveTimeline(runtime, 'emp:alice')",
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => ({ view: 'table', kind: 'template', data: await employeeMoveTimeline(db, 'emp:alice'), meta: {} }),
+    run: async (runtime) => ({ view: 'table', kind: 'template', data: await employeeMoveTimeline(runtime, 'emp:alice'), meta: {} }),
   },
 ];
 

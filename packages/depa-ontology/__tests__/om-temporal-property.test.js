@@ -28,23 +28,23 @@ describe('temporal: om_property bi-temporal storage', () => {
   });
 
   test('setProperty writes multiple versions and getProperty reads @ NOW effective value', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'department', 'String', false);
       await om.createEntity(db, 'emp:1', 'Employee', 'Alice');
 
-      await om.setProperty(db, 'emp:1', 'department', 'Engineering', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'Engineering', {
         validTime: '2000-01-01T00:00:00Z',
       });
-      await om.setProperty(db, 'emp:1', 'department', 'Product', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'Product', {
         validTime: '2001-01-01T00:00:00Z',
       });
-      await om.setProperty(db, 'emp:1', 'department', 'FutureDept', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'FutureDept', {
         validTime: '2100-01-01T00:00:00Z',
       });
 
-      const nowVal = await om.getProperty(db, 'emp:1', 'department');
+      const nowVal = await om.getProperty(runtime, 'emp:1', 'department');
       expect(nowVal).toBe('Product');
 
       // Raw time-travel query sanity check: @ END should see the latest recorded value.
@@ -66,16 +66,16 @@ describe('temporal: om_property bi-temporal storage', () => {
   });
 
   test('getEntityView returns properties effective @ NOW (future versions are ignored)', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'department', 'String', false);
       await om.createEntity(db, 'emp:2', 'Employee', 'Bob');
 
-      await om.setProperty(db, 'emp:2', 'department', 'Eng', { validTime: '2000-01-01T00:00:00Z' });
-      await om.setProperty(db, 'emp:2', 'department', 'Future', { validTime: '2100-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'emp:2', 'department', 'Eng', { validTime: '2000-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'emp:2', 'department', 'Future', { validTime: '2100-01-01T00:00:00Z' });
 
-      const view = await om.getEntityView(db, 'emp:2');
+      const view = await om.getEntityView(runtime, 'emp:2');
       expect(view.properties.department).toBe('Eng');
     } finally {
       db.close();

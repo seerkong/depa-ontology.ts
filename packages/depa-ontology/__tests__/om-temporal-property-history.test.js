@@ -4,19 +4,19 @@ const { createTestDb } = require('./helpers');
 
 describe('temporal: getPropertyHistory', () => {
   test('returns full property history sorted by valid_time', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'department', 'String', false);
       await om.createEntity(db, 'emp:1', 'Employee', 'Alice');
 
-      await om.setProperty(db, 'emp:1', 'department', 'Engineering', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'Engineering', {
         validTime: '2025-01-01T00:00:00Z',
       });
-      await om.setProperty(db, 'emp:1', 'department', 'Product', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'Product', {
         validTime: '2025-06-01T00:00:00Z',
       });
-      await om.setProperty(db, 'emp:1', 'department', 'Management', {
+      await om.setProperty(runtime, 'emp:1', 'department', 'Management', {
         validTime: '2026-01-01T00:00:00Z',
       });
 
@@ -39,15 +39,15 @@ describe('temporal: getPropertyHistory', () => {
   });
 
   test('supports from/to range filtering by valid_time', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'department', 'String', false);
       await om.createEntity(db, 'emp:2', 'Employee', 'Bob');
 
-      await om.setProperty(db, 'emp:2', 'department', 'A', { validTime: '2025-01-01T00:00:00Z' });
-      await om.setProperty(db, 'emp:2', 'department', 'B', { validTime: '2025-06-01T00:00:00Z' });
-      await om.setProperty(db, 'emp:2', 'department', 'C', { validTime: '2026-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'emp:2', 'department', 'A', { validTime: '2025-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'emp:2', 'department', 'B', { validTime: '2025-06-01T00:00:00Z' });
+      await om.setProperty(runtime, 'emp:2', 'department', 'C', { validTime: '2026-01-01T00:00:00Z' });
 
       const history = await om.getPropertyHistory(db, 'emp:2', 'department', {
         from: '2025-05-01T00:00:00Z',

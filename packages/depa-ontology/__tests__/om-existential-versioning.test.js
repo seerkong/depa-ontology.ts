@@ -5,25 +5,25 @@ const om = require('../cozo-om');
 const { createTestDb } = require('./helpers');
 
 async function createOrderWorld() {
-  const { db } = await createTestDb();
+  const { db , runtime } = await createTestDb();
   await om.defineType(db, 'Order', 'Order');
   await om.defineType(db, 'Shipment', 'Shipment');
   await om.defineRelation(db, 'has_shipment', 'Order', 'Shipment', true);
   await om.defineAttribute(db, 'Order', 'status', 'String', false);
-  return db;
+  return { db, runtime };
 }
 
 describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', () => {
   test('snapshot includes existential rule definitions', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'order_needs_shipment', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
       message: 'm1',
     });
 
-    await om.writeSchemaSnapshot(db, 1);
-    const snapshot = await om.readSchemaSnapshot(db, 1);
+    await om.writeSchemaSnapshot(runtime, 1);
+    const snapshot = await om.readSchemaSnapshot(runtime, 1);
 
     const rows = snapshot.schema.om_existential_rule_def;
     expect(Array.isArray(rows)).toBe(true);
@@ -32,14 +32,14 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
   });
 
   test('rollback restores the historical rule definition', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'r1', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
       message: 'v1 message',
     });
 
-    await om.applySchemaMigration(db, {
+    await om.applySchemaMigration(runtime, {
       migrationId: 'mig-ex-' + Math.random().toString(36).slice(2, 8),
       fromVersion: 1,
       toVersion: 2,
@@ -50,9 +50,9 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
       exists: { rel: 'has_shipment', toType: 'Shipment' },
       message: 'v2 message',
     });
-    await om.writeSchemaSnapshot(db, 2);
+    await om.writeSchemaSnapshot(runtime, 2);
 
-    await om.rollbackSchema(db, 1);
+    await om.rollbackSchema(runtime, 1);
 
     const rules = await om.listExistentialRules(db);
     expect(rules.length).toBe(1);
@@ -61,14 +61,14 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
   });
 
   test('diffSchemaVersions reports rule changes', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'r1', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
       message: 'old',
     });
 
-    await om.applySchemaMigration(db, {
+    await om.applySchemaMigration(runtime, {
       migrationId: 'mig-ex-' + Math.random().toString(36).slice(2, 8),
       fromVersion: 1,
       toVersion: 2,
@@ -83,7 +83,7 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
     });
-    await om.writeSchemaSnapshot(db, 2);
+    await om.writeSchemaSnapshot(runtime, 2);
 
     const diff = await om.diffSchemaVersions(db, 1, 2);
     const ruleDiff = diff.schema.om_existential_rule_def;
@@ -93,14 +93,14 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
   });
 
   test('rollback tolerates legacy snapshots without a rules section', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'r1', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
     });
 
     // Simulate a legacy snapshot written before existential rules existed.
-    const snapshot = await om.readSchemaSnapshot(db, 1).catch(() => null);
+    const snapshot = await om.readSchemaSnapshot(runtime, 1).catch(() => null);
     const legacy = {
       version: 1,
       createdAt: new Date().toISOString(),
@@ -125,14 +125,14 @@ describe('OM-027: existential rules join schema snapshot/diff/rollback (T4.1)', 
     await db.run(built.script, built.params);
 
     // Move to v2 first so the rollback actually runs.
-    await om.applySchemaMigration(db, {
+    await om.applySchemaMigration(runtime, {
       migrationId: 'mig-ex-' + Math.random().toString(36).slice(2, 8),
       fromVersion: 1,
       toVersion: 2,
       steps: [{ kind: 'addType', typeName: 'Invoice', description: 'Invoice' }],
     });
 
-    const result = await om.rollbackSchema(db, 1, {
+    const result = await om.rollbackSchema(runtime, 1, {
       strict: false,
       legacyBehaviorPolicy: 'clear',
     });
@@ -156,7 +156,7 @@ async function putAliasRel(db, alias, canonical) {
 
 describe('OM-027: alias stability and backward compatibility (T4.2)', () => {
   test('rule keeps working after the relation is renamed via alias', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.defineExistentialRule(db, 'order_needs_shipment', {
       forEach: { type: 'Order' },
       exists: { rel: 'has_shipment', toType: 'Shipment' },
@@ -165,7 +165,7 @@ describe('OM-027: alias stability and backward compatibility (T4.2)', () => {
     // o_old satisfied with an edge stored under the pre-rename name.
     await om.createEntity(db, 'o_old', 'Order', 'old order');
     await om.createEntity(db, 's_old', 'Shipment', 'old shipment');
-    await om.linkEntities(db, 'o_old', 'has_shipment', 's_old');
+    await om.linkEntities(runtime, 'o_old', 'has_shipment', 's_old');
 
     // Rename has_shipment -> fulfilled_by: new canonical rel def + alias row.
     await om.defineRelation(db, 'fulfilled_by', 'Order', 'Shipment', true);
@@ -175,7 +175,7 @@ describe('OM-027: alias stability and backward compatibility (T4.2)', () => {
     // o_new satisfied via the new canonical name; o_missing violates.
     await om.createEntity(db, 'o_new', 'Order', 'new order');
     await om.createEntity(db, 's_new', 'Shipment', 'new shipment');
-    await om.linkEntities(db, 'o_new', 'fulfilled_by', 's_new');
+    await om.linkEntities(runtime, 'o_new', 'fulfilled_by', 's_new');
     await om.createEntity(db, 'o_missing', 'Order', 'missing');
 
     const violations = await om.checkExistentialRules(db);
@@ -183,11 +183,11 @@ describe('OM-027: alias stability and backward compatibility (T4.2)', () => {
   });
 
   test('no rules defined: check and apply are no-ops', async () => {
-    const db = await createOrderWorld();
+    const { db, runtime } = await createOrderWorld();
     await om.createEntity(db, 'o1', 'Order', 'order 1');
 
     expect(await om.checkExistentialRules(db)).toEqual([]);
-    const result = await om.applyExistentialRules(db);
+    const result = await om.applyExistentialRules(runtime);
     expect(result.created).toEqual([]);
     expect(result.reachedFixpoint).toBe(true);
   });

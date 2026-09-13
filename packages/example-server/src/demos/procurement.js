@@ -38,13 +38,13 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'Shipment', 'eta_days', 'Number', false, '预计到货天数');
   await om.defineAttribute(db, 'Shipment', 'carrier', 'String', false, '承运商');
 
-  await om.defineRelation(db, 'placed_with', 'PurchaseOrder', 'Supplier', true, '下单给');
-  await om.defineRelation(db, 'has_line_item', 'PurchaseOrder', 'LineItem', true, '包含行项目');
-  await om.defineRelation(db, 'fulfilled_by', 'LineItem', 'Warehouse', true, '由仓库履约');
-  await om.defineRelation(db, 'covered_by', 'PurchaseOrder', 'Contract', true, '受合同覆盖');
-  await om.defineRelation(db, 'supplies', 'Supplier', 'Warehouse', true, '供应给');
-  await om.defineRelation(db, 'ships', 'PurchaseOrder', 'Shipment', true, '发运');
-  await om.defineRelation(db, 'arrives_at', 'Shipment', 'Warehouse', true, '送达仓库');
+  await om.defineRelation(db, 'placed_with', 'PurchaseOrder', 'Supplier', true, '下单给', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'has_line_item', 'PurchaseOrder', 'LineItem', true, '包含行项目', { cardinality: 'one_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'fulfilled_by', 'LineItem', 'Warehouse', true, '由仓库履约', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'covered_by', 'PurchaseOrder', 'Contract', true, '受合同覆盖', { cardinality: 'many_to_one', optional: true, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'supplies', 'Supplier', 'Warehouse', true, '供应给', { cardinality: 'many_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'ships', 'PurchaseOrder', 'Shipment', true, '发运', { cardinality: 'one_to_many', optional: false, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'arrives_at', 'Shipment', 'Warehouse', true, '送达仓库', { cardinality: 'many_to_one', optional: true, role: 'association', on_delete: 'retract_edges' });
 }
 
 // ── Default seed sheets ─────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ const queries = [
     dsl: `// DSL v2：高价值行项目\nconst q = dsl.query()\n  .select(['id', 'label', 'price', 'qty'])\n  .fromStored('om_entity', {\n    id: dsl.var('id'),\n    type_name: dsl.param('li_type', 'LineItem'),\n    label: dsl.var('label'),\n  })\n  .fromStored('om_property', {\n    entity_id: dsl.var('id'),\n    attr_name: dsl.param('price_attr', 'unit_price'),\n    value: dsl.var('price'),\n  })\n  .fromStored('om_property', {\n    entity_id: dsl.var('id'),\n    attr_name: dsl.param('qty_attr', 'quantity'),\n    value: dsl.var('qty'),\n  })\n  .where(dsl.and(\n    dsl.gt(dsl.var('price'), dsl.param('min_price', 20)),\n    dsl.gte(dsl.var('qty'), dsl.param('min_qty', 200)),\n  ))\n  .order('price')\n  .build();`,
     defaultView: 'table',
     kind: 'dsl',
-    run: async (db) => {
+    run: async (runtime) => {
       const q = dsl.query()
         .select(['id', 'label', 'price', 'qty'])
         .fromStored('om_entity', {
@@ -257,13 +257,13 @@ const queries = [
     queryId: 'impactAnalysis',
     label: '采购单影响分析',
     meaning: '从 PO-1001 向外追踪影响范围',
-    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(db, {\n  rootId: 'po:1001',\n  relNames: ['has_line_item', 'fulfilled_by', 'placed_with', 'covered_by'],\n  maxDepth: 3,\n  direction: 'outgoing',\n});`,
+    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(runtime, {\n  rootId: 'po:1001',\n  relNames: await om.listOwnerRelations(runtime),\n  maxDepth: 3,\n  direction: 'outgoing',\n});`,
     defaultView: 'graph',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.impactAnalysis(db, {
+    run: async (runtime) => {
+      const result = await om.impactAnalysis(runtime, {
         rootId: 'po:1001',
-        relNames: ['has_line_item', 'fulfilled_by', 'placed_with', 'covered_by', 'ships', 'arrives_at'],
+        relNames: await om.listOwnerRelations(runtime),
         maxDepth: 3,
         direction: 'outgoing',
       });
@@ -274,13 +274,13 @@ const queries = [
     queryId: 'ownershipTree',
     label: '供应商所有权树',
     meaning: '先达公司的供应链层级',
-    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(db, {\n  rootId: 's:acme',\n  ownerRelNames: ['supplies', 'placed_with'],\n  maxDepth: 3,\n});`,
+    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(runtime, {\n  rootId: 's:acme',\n  ownerRelNames: await om.listOwnerRelations(runtime),\n  maxDepth: 3,\n});`,
     defaultView: 'tree',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.ownershipTree(db, {
+    run: async (runtime) => {
+      const result = await om.ownershipTree(runtime, {
         rootId: 's:acme',
-        ownerRelNames: ['supplies', 'placed_with'],
+        ownerRelNames: await om.listOwnerRelations(runtime),
         maxDepth: 3,
       });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };
@@ -293,7 +293,7 @@ const queries = [
     dsl: `// Template：风险热点（榜单/表格）\nawait om.riskHotspot(db, {\n  typeName: 'Contract',\n  riskAttr: 'risk_score',\n  topK: 5,\n  minScore: 0,\n  degreeWeight: 1,\n});`,
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => {
+    run: async (runtime) => {
       const result = await om.riskHotspot(db, {
         typeName: 'Contract',
         riskAttr: 'risk_score',

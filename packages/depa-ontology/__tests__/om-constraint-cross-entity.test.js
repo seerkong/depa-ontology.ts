@@ -5,21 +5,17 @@ const dsl = require('depa-datalog');
 
 describe('Phase 2 (track add-action-and-constraints): cross-entity constraints', () => {
   test('defineConstraint stores metadata in om_constraint_def with type cross-entity', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Department', 'Department');
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineRelation(db, 'heads', 'Department', 'Employee', true);
 
-      await om.defineConstraint(db, 'Department', 'at_most_one_head', {
-        scope: 'cross-entity',
-        when: async () => true,
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Department', 'at_most_one_head', { scope: 'cross-entity', message: 'Department can have at most one head' });
+      await om.registerConstraint(runtime, 'Department', 'at_most_one_head', async () => true, async (ctx) => {
           const { outgoing } = await ctx.getNeighbors('heads');
           return outgoing.length <= 1;
-        },
-        message: 'Department can have at most one head',
-      });
+        });
 
       const q = dsl.query()
         .select(['constraint_type', 'message'])
@@ -41,28 +37,24 @@ describe('Phase 2 (track add-action-and-constraints): cross-entity constraints',
   });
 
   test('linkEntities triggers cross-entity constraints unless skipConstraints is true', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Department', 'Department');
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineRelation(db, 'heads', 'Department', 'Employee', true);
 
-      await om.defineConstraint(db, 'Department', 'at_most_one_head', {
-        scope: 'cross-entity',
-        when: async () => true,
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Department', 'at_most_one_head', { scope: 'cross-entity', message: 'Department can have at most one head' });
+      await om.registerConstraint(runtime, 'Department', 'at_most_one_head', async () => true, async (ctx) => {
           const { outgoing } = await ctx.getNeighbors('heads');
           return outgoing.length <= 1;
-        },
-        message: 'Department can have at most one head',
-      });
+        });
 
       await om.createEntity(db, 'dept:1', 'Department', 'Dept #1');
       await om.createEntity(db, 'emp:1', 'Employee', 'Alice');
       await om.createEntity(db, 'emp:2', 'Employee', 'Bob');
 
-      await om.linkEntities(db, 'dept:1', 'heads', 'emp:1');
-      await expect(om.linkEntities(db, 'dept:1', 'heads', 'emp:2')).rejects.toThrow(
+      await om.linkEntities(runtime, 'dept:1', 'heads', 'emp:1');
+      await expect(om.linkEntities(runtime, 'dept:1', 'heads', 'emp:2')).rejects.toThrow(
         /at_most_one_head|at most one head/i
       );
 
@@ -80,8 +72,8 @@ describe('Phase 2 (track add-action-and-constraints): cross-entity constraints',
       expect(edges.rows[0][0]).toBe('emp:1');
 
       // skipConstraints allows inserting violating state (for bulk load), but validateConstraints should catch it.
-      await om.linkEntities(db, 'dept:1', 'heads', 'emp:2', {}, { skipConstraints: true });
-      const result = await om.validateConstraints(db, 'dept:1');
+      await om.linkEntities(runtime, 'dept:1', 'heads', 'emp:2', {}, { skipConstraints: true });
+      const result = await om.validateConstraints(runtime, 'dept:1');
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toMatch(/at_most_one_head/);
     } finally {

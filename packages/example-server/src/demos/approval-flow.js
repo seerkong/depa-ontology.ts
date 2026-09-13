@@ -235,98 +235,89 @@ const defaultTables = [
 
 // -- Behavior layer ------------------------------------------------------------
 
-async function registerBehaviors(db) {
+async function registerBehaviors(runtime) {
   // Mutations
-  await om.defineMutation(
-    db,
+  await om.registerMutation(runtime,
     'ApprovalRequest',
-    'setStatus',
-    async (ctx, params) => {
+    'setStatus', async (ctx, params) => {
       const status = String(params.status || '').trim();
       if (!status) throw new Error('status is required');
       await ctx.setProperty('status', status);
-    },
-    '设置审批状态'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'setEffectiveStatus',
-    async (ctx, params) => {
+    'setStatus', '设置审批状态');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'setEffectiveStatus', async (ctx, params) => {
       const status = String(params.status || '').trim();
       if (!status) throw new Error('status is required');
       const vt = params && params.validTime != null ? String(params.validTime).trim() : '';
       await ctx.setProperty('effective_status', status, vt ? { validTime: vt } : undefined);
-    },
-    '设置时间轴状态（bi-temporal）'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'setEffectiveAt',
-    async (ctx, params) => {
+    'setEffectiveStatus', '设置时间轴状态（bi-temporal）');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'setEffectiveAt', async (ctx, params) => {
       const effectiveAt = String(params.effectiveAt || '').trim();
       if (!effectiveAt) throw new Error('effectiveAt is required');
       await ctx.setProperty('effective_at', effectiveAt);
-    },
-    '写入生效时间字段'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'setRequiresReview',
-    async (ctx, params) => {
+    'setEffectiveAt', '写入生效时间字段');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'setRequiresReview', async (ctx, params) => {
       await ctx.setProperty('requires_review', !!params.value);
-    },
-    '设置 requires_review'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'assignApprover',
-    async (ctx, params) => {
+    'setRequiresReview', '设置 requires_review');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'assignApprover', async (ctx, params) => {
       const approverId = String(params.approverId || '').trim();
       if (!approverId) throw new Error('approverId is required');
       await ctx.linkEntities('assigned_to', approverId, { step: params.step ?? 1 });
-    },
-    '分配审批人'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'linkToDepartment',
-    async (ctx, params) => {
+    'assignApprover', '分配审批人');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'linkToDepartment', async (ctx, params) => {
       const deptId = String(params.deptId || '').trim();
       if (!deptId) throw new Error('deptId is required');
 
       // Link request -> dept (for lookup convenience)
       await ctx.linkEntities('belongs_to', deptId, {});
-    },
-    '关联到部门'
-  );
-
-  await om.defineMutation(
-    db,
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'addDeptRequest',
-    async (ctx, params) => {
+    'linkToDepartment', '关联到部门');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'addDeptRequest', async (ctx, params) => {
       const deptId = String(params.deptId || '').trim();
       if (!deptId) throw new Error('deptId is required');
-      await om.linkEntities(ctx.runner, deptId, 'requests', ctx.entityId, {});
-    },
-    '在部门 requests 中登记'
-  );
-
-  await om.defineMutation(
-    db,
+      await om.linkEntities(ctx.runtime, deptId, 'requests', ctx.entityId, {});
+    });
+  await om.defineMutation(runtime,
     'ApprovalRequest',
-    'recordDecisionTimeline',
-    async (ctx, params) => {
+    'addDeptRequest', '在部门 requests 中登记');
+
+  await om.registerMutation(runtime,
+    'ApprovalRequest',
+    'recordDecisionTimeline', async (ctx, params) => {
       const decidedBy = params.decidedBy != null ? String(params.decidedBy) : '';
       const note = params.note != null ? String(params.note) : '';
 
@@ -340,27 +331,25 @@ async function registerBehaviors(db) {
       // Always write marker properties so timeline rows exist even if metadata is empty.
       await ctx.setProperty('status_decided_by', decidedBy, { validTime: vt });
       await ctx.setProperty('status_note', note, { validTime: vt });
-    },
-    '写入时间轴元数据（对齐 effective_status.valid_time）'
-  );
+    });
+  await om.defineMutation(runtime,
+    'ApprovalRequest',
+    'recordDecisionTimeline', '写入时间轴元数据（对齐 effective_status.valid_time）');
 
   // Computed properties (lazy, not stored)
-  await om.defineComputed(
-    db,
+  await om.registerComputed(runtime,
     'ApprovalRequest',
-    'approval_chain_length',
-    async (ctx) => {
-      const neighbors = await om.getNeighbors(ctx.runner, ctx.entityId, 'assigned_to');
+    'approval_chain_length', async (ctx) => {
+      const neighbors = await om.getNeighbors(ctx.runtime, ctx.entityId, 'assigned_to');
       return (neighbors?.outgoing || []).length;
-    },
-    '审批链长度（assigned_to 出边数量）'
-  );
-
-  await om.defineComputed(
-    db,
+    });
+  await om.defineComputed(runtime,
     'ApprovalRequest',
-    'risk_score',
-    async (ctx) => {
+    'approval_chain_length', '审批链长度（assigned_to 出边数量）');
+
+  await om.registerComputed(runtime,
+    'ApprovalRequest',
+    'risk_score', async (ctx) => {
       // risk_score = amount / department.budget_limit * 100 (NOW semantics)
       const amount = Number(await ctx.getProperty('amount'));
       if (!Number.isFinite(amount)) return 0;
@@ -369,56 +358,43 @@ async function registerBehaviors(db) {
       const deptId = neighbors?.outgoing?.[0]?.entityId;
       if (!deptId) return 0;
 
-      const budget = Number(await om.getProperty(ctx.runner, deptId, 'budget_limit'));
+      const budget = Number(await om.getProperty(ctx.runtime, deptId, 'budget_limit'));
       if (!Number.isFinite(amount) || !Number.isFinite(budget) || budget <= 0) return 0;
       return Math.round((amount / budget) * 100);
-    },
-    '风险评分（金额/预算上限）'
-  );
+    });
+  await om.defineComputed(runtime,
+    'ApprovalRequest',
+    'risk_score', '风险评分（金额/预算上限）');
 
   // Constraints
-  await om.defineConstraint(db, 'ApprovalRequest', 'valid_status', {
-    scope: 'conditional',
-    message: 'status must be one of: draft/submitted/approved/rejected/escalated',
-    when: async () => true,
-    then: async (ctx) => {
+  await await om.defineConstraint(runtime, 'ApprovalRequest', 'valid_status', { scope: 'conditional', message: 'status must be one of: draft/submitted/approved/rejected/escalated' });
+  await om.registerConstraint(runtime, 'ApprovalRequest', 'valid_status', async () => true, async (ctx) => {
       const s = await ctx.getProperty('status');
       return ['draft', 'submitted', 'approved', 'rejected', 'escalated'].includes(String(s));
-    },
-  });
+    });
 
-  await om.defineConstraint(db, 'ApprovalRequest', 'high_risk_requires_review', {
-    scope: 'conditional',
-    message: 'requires_review must be true when risk_score > 80',
-    when: async (ctx) => Number(await ctx.getProperty('risk_score')) > 80,
-    then: async (ctx) => (await ctx.getProperty('requires_review')) === true,
-  });
+  await await om.defineConstraint(runtime, 'ApprovalRequest', 'high_risk_requires_review', { scope: 'conditional', message: 'requires_review must be true when risk_score > 80' });
+  await om.registerConstraint(runtime, 'ApprovalRequest', 'high_risk_requires_review', async (ctx) => Number(await ctx.getProperty('risk_score')) > 80, async (ctx) => (await ctx.getProperty('requires_review')) === true);
 
-  await om.defineConstraint(db, 'Department', 'max_pending_requests', {
-    scope: 'cross-entity',
-    message: 'department has too many submitted requests (max 3)',
-    when: async () => true,
-    then: async (ctx) => {
+  await await om.defineConstraint(runtime, 'Department', 'max_pending_requests', { scope: 'cross-entity', message: 'department has too many submitted requests (max 3)' });
+  await om.registerConstraint(runtime, 'Department', 'max_pending_requests', async () => true, async (ctx) => {
       // Count request edges where request.status == 'submitted' (NOW semantics)
       const neighbors = await ctx.getNeighbors('requests', 'outgoing');
       const requests = Array.isArray(neighbors?.outgoing) ? neighbors.outgoing : [];
       let submittedCount = 0;
       for (const entry of requests) {
-        const s = await om.getProperty(ctx.runner, entry.entityId, 'status');
+        const s = await om.getProperty(ctx.runtime, entry.entityId, 'status');
         if (String(s) === 'submitted') {
           submittedCount += 1;
         }
       }
       return submittedCount <= 3;
-    },
-  });
+    });
 
   // Actions
-  await om.defineAction(
-    db,
+  await om.registerAction(runtime,
     'ApprovalRequest',
-    'submit',
-    async (_ctx, params) => {
+    'submit', async (_ctx, params) => {
       const deptId = String(params.deptId || '').trim();
       const approverId = String(params.approverId || '').trim();
       const effectiveAt = String(params.effectiveAt || '').trim();
@@ -436,15 +412,14 @@ async function registerBehaviors(db) {
         { mutation: 'addDeptRequest', params: { deptId } },
         { mutation: 'assignApprover', params: { approverId, step: 1 } },
       ];
-    },
-    '提交审批'
-  );
-
-  await om.defineAction(
-    db,
+    });
+  await om.defineAction(runtime,
     'ApprovalRequest',
-    'approve',
-    async (ctx, params) => {
+    'submit', '提交审批');
+
+  await om.registerAction(runtime,
+    'ApprovalRequest',
+    'approve', async (ctx, params) => {
       const decidedBy = params && params.approverId != null ? String(params.approverId) : '';
       const note = params && params.note != null ? String(params.note) : '';
       const effectiveAt = String(await ctx.getProperty('effective_at') || '').trim();
@@ -456,15 +431,14 @@ async function registerBehaviors(db) {
         { mutation: 'setEffectiveStatus', params: { status: 'approved', validTime: effectiveAt } },
         { mutation: 'recordDecisionTimeline', params: { decidedBy, note, at: effectiveAt } },
       ];
-    },
-    '审批通过'
-  );
-
-  await om.defineAction(
-    db,
+    });
+  await om.defineAction(runtime,
     'ApprovalRequest',
-    'reject',
-    async (_ctx, params) => {
+    'approve', '审批通过');
+
+  await om.registerAction(runtime,
+    'ApprovalRequest',
+    'reject', async (_ctx, params) => {
       const decidedBy = params && params.approverId != null ? String(params.approverId) : '';
       const note = params && params.note != null ? String(params.note) : '';
       return [
@@ -473,34 +447,34 @@ async function registerBehaviors(db) {
         { mutation: 'setEffectiveStatus', params: { status: 'rejected' } },
         { mutation: 'recordDecisionTimeline', params: { decidedBy, note, at: 'ASSERT' } },
       ];
-    },
-    '驳回'
-  );
-
-  await om.defineAction(
-    db,
+    });
+  await om.defineAction(runtime,
     'ApprovalRequest',
-    'escalate',
-    async (_ctx, params) => {
+    'reject', '驳回');
+
+  await om.registerAction(runtime,
+    'ApprovalRequest',
+    'escalate', async (_ctx, params) => {
       const approverId = String(params.approverId || '').trim();
       if (!approverId) throw new Error('approverId is required');
       return [
         { mutation: 'assignApprover', params: { approverId, step: 99 } },
         { mutation: 'setStatus', params: { status: 'escalated' } },
       ];
-    },
-    '升级审批'
-  );
+    });
+  await om.defineAction(runtime,
+    'ApprovalRequest',
+    'escalate', '升级审批');
 
   // Interceptors
-  await om.addInterceptor(db, 'ApprovalRequest', 'approve', 'before', async (ctx) => {
+  await om.defineInterceptor(runtime, 'ApprovalRequest', 'approve', 'before', async (ctx) => {
     const status = await ctx.getProperty('status');
     if (String(status) !== 'submitted' && String(status) !== 'escalated') {
       throw new Error('approve requires status=submitted|escalated');
     }
   }, '审批前置状态检查');
 
-  await om.addInterceptor(db, 'ApprovalRequest', 'reject', 'before', async (ctx) => {
+  await om.defineInterceptor(runtime, 'ApprovalRequest', 'reject', 'before', async (ctx) => {
     const status = await ctx.getProperty('status');
     if (String(status) !== 'submitted' && String(status) !== 'escalated') {
       throw new Error('reject requires status=submitted|escalated');
@@ -636,12 +610,12 @@ const queries = [
     queryId: 'approveLowRisk',
     label: '执行 approve（低风险）',
     meaning: '对 req:1002 执行 approve action（应成功）',
-    dsl: "await om.executeAction(db, 'req:1002', 'approve', {})",
+    dsl: "await om.executeAction(runtime, 'req:1002', 'approve', {})",
     defaultView: 'table',
     kind: 'action',
-    run: async (db) => {
-      await om.executeAction(db, 'req:1002', 'approve', {});
-      const view = await om.getEntityView(db, 'req:1002');
+    run: async (runtime) => {
+      await om.executeAction(runtime, 'req:1002', 'approve', {});
+      const view = await om.getEntityView(runtime, 'req:1002');
       return { view: 'table', kind: 'action', data: rowsFromEntityViews([view]), meta: {} };
     },
   },
@@ -649,11 +623,11 @@ const queries = [
     queryId: 'validateFinanceDept',
     label: '校验财务部跨实体约束',
     meaning: '对 dept:finance 执行 validateConstraints（max_pending_requests）',
-    dsl: "await om.validateConstraints(db, 'dept:finance')",
+    dsl: "await om.validateConstraints(runtime, 'dept:finance')",
     defaultView: 'table',
     kind: 'action',
-    run: async (db) => {
-      const result = await om.validateConstraints(db, 'dept:finance');
+    run: async (runtime) => {
+      const result = await om.validateConstraints(runtime, 'dept:finance');
       const columns = ['entityId', 'valid', 'errors'];
       const rows = [{ entityId: 'dept:finance', valid: result.valid, errors: result.errors.join('\n') }];
       return { view: 'table', kind: 'action', data: { columns, rows }, meta: {} };
@@ -667,36 +641,36 @@ const queries = [
  const effectiveAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
  // 2) submit with effectiveAt
- await om.executeAction(db, 'req:1001', 'submit', {
+ await om.executeAction(runtime, 'req:1001', 'submit', {
    deptId: 'dept:it',
    approverId: 'appr:alice',
    effectiveAt,
  });
 
  // 3) approve (writes effective_status at effectiveAt)
- await om.executeAction(db, 'req:1001', 'approve', { approverId: 'appr:alice', note: 'ok' });
+ await om.executeAction(runtime, 'req:1001', 'approve', { approverId: 'appr:alice', note: 'ok' });
 
  // 4) query timeline
  // use om.getPropertyHistory('effective_status')
  // query as-of before/after effectiveAt`,
     defaultView: 'table',
     kind: 'action',
-    run: async (db) => {
+    run: async (runtime) => {
       const effectiveAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      await om.executeAction(db, 'req:1001', 'submit', {
+      await om.executeAction(runtime, 'req:1001', 'submit', {
         deptId: 'dept:it',
         approverId: 'appr:alice',
         effectiveAt,
       });
-      await om.executeAction(db, 'req:1001', 'approve', { approverId: 'appr:alice', note: 'ok' });
+      await om.executeAction(runtime, 'req:1001', 'approve', { approverId: 'appr:alice', note: 'ok' });
 
       // Return a unified table: timeline rows + two as-of snapshot rows.
-      const timeline = await readTimelineRows(db, 'req:1001');
+      const timeline = await readTimelineRows(runtime, 'req:1001');
 
       const asOfBeforeIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       const asOfAfterIso = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
-      const asOfBefore = await readAsOfStatus(db, 'req:1001', asOfBeforeIso);
-      const asOfAfter = await readAsOfStatus(db, 'req:1001', asOfAfterIso);
+      const asOfBefore = await readAsOfStatus(runtime, 'req:1001', asOfBeforeIso);
+      const asOfAfter = await readAsOfStatus(runtime, 'req:1001', asOfAfterIso);
 
       const columns = ['kind', ...timeline.columns];
       const rows = [];
@@ -730,14 +704,14 @@ const queries = [
     queryId: 'requestsWithComputed',
     label: '审批申请（含派生属性）',
     meaning: '列出所有 ApprovalRequest，并展示 risk_score / approval_chain_length',
-    dsl: "for (const e of await om.findByType(db, 'ApprovalRequest', {}, { exact: true })) await om.getEntityView(db, e.id)",
+    dsl: "for (const e of await om.findByType(db, 'ApprovalRequest', {}, { exact: true })) await om.getEntityView(runtime, e.id)",
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => {
+    run: async (runtime) => {
       const entries = await om.findByType(db, 'ApprovalRequest', {}, { exact: true });
       const views = [];
       for (const e of entries) {
-        const view = await om.getEntityView(db, e.id);
+        const view = await om.getEntityView(runtime, e.id);
         if (view) views.push(view);
       }
       return { view: 'table', kind: 'template', data: rowsFromEntityViews(views), meta: {} };
@@ -747,12 +721,12 @@ const queries = [
     queryId: 'submitDraft',
     label: '执行 submit（含跨实体约束）',
     meaning: "对 req:1001 执行 submit，写入关系并触发 Department 跨实体约束",
-    dsl: "await om.executeAction(db, 'req:1001', 'submit', { deptId: 'dept:it', approverId: 'appr:alice', effectiveAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() })",
+    dsl: "await om.executeAction(runtime, 'req:1001', 'submit', { deptId: 'dept:it', approverId: 'appr:alice', effectiveAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() })",
     defaultView: 'table',
     kind: 'action',
-    run: async (db) => {
-      await om.executeAction(db, 'req:1001', 'submit', { deptId: 'dept:it', approverId: 'appr:alice', effectiveAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
-      const view = await om.getEntityView(db, 'req:1001');
+    run: async (runtime) => {
+      await om.executeAction(runtime, 'req:1001', 'submit', { deptId: 'dept:it', approverId: 'appr:alice', effectiveAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+      const view = await om.getEntityView(runtime, 'req:1001');
       return { view: 'table', kind: 'action', data: rowsFromEntityViews([view]), meta: {} };
     },
   },

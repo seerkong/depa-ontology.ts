@@ -180,3 +180,59 @@ test('thickened types appear in object lists', async () => {
     close();
   }
 });
+
+// ─── Regression: the cross-demo registry leak ────────────────────────────────
+// Composite operations used to break as soon as a second demo came online: the
+// behavior registry was process-wide, so loading HR cleared CRM's registered
+// mutations and every later CRM invoke failed with "not defined for type".
+test('loading a second demo does not break the first demo composite operations', async () => {
+  const { app, close } = createApp();
+  try {
+    const call = async (demo, body) => {
+      const res = await app.handle(new Request(`http://localhost/api/demos/${demo}/invoke`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }));
+      return res.json();
+    };
+
+    const crm1 = await call('crm', {
+      fqn: 'ontology.crm.op.ConvertLead',
+      selector: { kind: 'one', objectType: 'Lead', id: 'lead:expo-mfg' },
+      invocation: {
+        type: 'Lead.convert',
+        kind: 'action',
+        payload: { accountId: 'acct:acme', opportunityId: 'opp:regress-1' },
+      },
+    });
+    expect(crm1.status).toBe('ok');
+
+    // Bring HR online — with a shared registry this is what used to wipe CRM.
+    const hr = await call('hr', {
+      fqn: 'ontology.hr.op.TransferEmployee',
+      selector: { kind: 'one', objectType: 'Employee', id: 'emp:frank' },
+      invocation: {
+        type: 'Employee.transfer',
+        kind: 'action',
+        payload: { departmentId: 'dept:platform' },
+      },
+    });
+    expect(hr.status).toBe('ok');
+
+    const crm2 = await call('crm', {
+      fqn: 'ontology.crm.op.ConvertLead',
+      selector: { kind: 'one', objectType: 'Lead', id: 'lead:web-ship' },
+      invocation: {
+        type: 'Lead.convert',
+        kind: 'action',
+        payload: { accountId: 'acct:acme', opportunityId: 'opp:regress-2' },
+      },
+    });
+    // Was 'error' before the per-runtime registry: the mutation had been cleared.
+    expect(crm2.status).toBe('ok');
+    expect(crm2.result.opportunityId).toBe('opp:regress-2');
+  } finally {
+    close();
+  }
+});

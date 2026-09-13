@@ -32,13 +32,13 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'ReviewCycle', 'year', 'Number', true, '年份');
   await om.defineAttribute(db, 'ReviewCycle', 'status', 'String', false, '状态');
 
-  await om.defineRelation(db, 'works_in', 'Employee', 'Department', true, '就职部门');
-  await om.defineRelation(db, 'reports_to', 'Employee', 'Employee', true, '汇报给');
-  await om.defineRelation(db, 'fills_position', 'Employee', 'Position', true, '担任岗位');
-  await om.defineRelation(db, 'requires_skill', 'Position', 'Skill', true, '需要技能');
-  await om.defineRelation(db, 'reviewed_in', 'Employee', 'ReviewCycle', true, '参与考核周期');
-  await om.defineRelation(db, 'has_skill', 'Employee', 'Skill', true, '掌握技能');
-  await om.defineRelation(db, 'parent_dept', 'Department', 'Department', true, '上级部门');
+  await om.defineRelation(db, 'works_in', 'Employee', 'Department', true, '就职部门', { cardinality: 'many_to_one', optional: false, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'reports_to', 'Employee', 'Employee', true, '汇报给', { cardinality: 'many_to_one', optional: true, role: 'hierarchy', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'fills_position', 'Employee', 'Position', true, '担任岗位', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'requires_skill', 'Position', 'Skill', true, '需要技能', { cardinality: 'one_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'reviewed_in', 'Employee', 'ReviewCycle', true, '参与考核周期', { cardinality: 'many_to_many', optional: true, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'has_skill', 'Employee', 'Skill', true, '掌握技能', { cardinality: 'many_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'parent_dept', 'Department', 'Department', true, '上级部门', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
 }
 
 const defaultSheets = {
@@ -233,7 +233,7 @@ const queries = [
     dsl: `// DSL v2：高薪员工（薪资>=140000）\nconst q = dsl.query()\n  .select(['id', 'label', 'salary'])\n  .fromStored('om_entity', {\n    id: dsl.var('id'),\n    type_name: dsl.param('emp_type', 'Employee'),\n    label: dsl.var('label'),\n  })\n  .fromStored('om_property', {\n    entity_id: dsl.var('id'),\n    attr_name: dsl.param('sal_attr', 'salary'),\n    value: dsl.var('salary'),\n  })\n  .where(dsl.gte(dsl.var('salary'), dsl.param('min_sal', 140000)))\n  .order('salary')\n  .build();`,
     defaultView: 'table',
     kind: 'dsl',
-    run: async (db) => {
+    run: async (runtime) => {
       const q = dsl.query()
         .select(['id', 'label', 'salary'])
         .fromStored('om_entity', {
@@ -261,13 +261,13 @@ const queries = [
     queryId: 'impactAnalysis',
     label: '汇报链影响分析',
     meaning: '从陈晓琳出发，沿汇报链追踪',
-    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(db, {\n  rootId: 'emp:alice',\n  relNames: ['reports_to'],\n  maxDepth: 3,\n  direction: 'incoming',\n});`,
+    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(runtime, {\n  rootId: 'emp:alice',\n  relNames: await om.listRelationsByRole(runtime, ['hierarchy']),\n  maxDepth: 3,\n  direction: 'incoming',\n});`,
     defaultView: 'graph',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.impactAnalysis(db, {
+    run: async (runtime) => {
+      const result = await om.impactAnalysis(runtime, {
         rootId: 'emp:alice',
-        relNames: ['reports_to'],
+        relNames: await om.listRelationsByRole(runtime, ['hierarchy']),
         maxDepth: 3,
         direction: 'incoming',
       });
@@ -278,13 +278,13 @@ const queries = [
     queryId: 'ownershipTree',
     label: '岗位技能树',
     meaning: '陈晓琳 → 岗位 → 技能层级',
-    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(db, {\n  rootId: 'emp:alice',\n  ownerRelNames: ['fills_position', 'requires_skill'],\n  maxDepth: 3,\n});`,
+    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(runtime, {\n  rootId: 'emp:alice',\n  ownerRelNames: await om.listOwnerRelations(runtime),\n  maxDepth: 3,\n});`,
     defaultView: 'tree',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.ownershipTree(db, {
+    run: async (runtime) => {
+      const result = await om.ownershipTree(runtime, {
         rootId: 'emp:alice',
-        ownerRelNames: ['fills_position', 'requires_skill', 'has_skill'],
+        ownerRelNames: await om.listOwnerRelations(runtime),
         maxDepth: 3,
       });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };
@@ -297,7 +297,7 @@ const queries = [
     dsl: `// Template：风险热点（榜单/表格）\nawait om.riskHotspot(db, {\n  typeName: 'Employee',\n  riskAttr: 'salary',\n  topK: 5,\n  minScore: 0,\n  degreeWeight: 10000,\n});`,
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => {
+    run: async (runtime) => {
       const result = await om.riskHotspot(db, {
         typeName: 'Employee',
         riskAttr: 'salary',

@@ -65,17 +65,14 @@ describe('OM behavior portability readiness gate', () => {
       await om.createEntity(runtime, 'resource:constraint', 'Resource', 'Resource');
 
       const calls = [];
-      await om.defineConstraint(runtime, 'Resource', 'guard', {
-        scope: 'conditional',
-        when: () => {
+      await await om.defineConstraint(runtime, 'Resource', 'guard', { scope: 'conditional' });
+      await om.registerConstraint(runtime, 'Resource', 'guard', () => {
           calls.push('when');
           return true;
-        },
-        then: () => {
+        }, () => {
           calls.push('then');
           return true;
-        },
-      });
+        });
       await putBinding(db, {
         kind: 'constraint',
         owner: 'Resource',
@@ -117,13 +114,11 @@ describe('OM behavior portability readiness gate', () => {
       });
       expect(calls).toEqual([]);
 
-      await om.defineConstraint(runtime, 'Resource', 'custom_guard', {
-        scope: 'custom',
-        validator: () => {
+      await await om.defineConstraint(runtime, 'Resource', 'custom_guard', { scope: 'custom' });
+      await om.registerValidator(runtime, 'Resource', 'custom_guard', () => {
           calls.push('legacy-validator');
           return null;
-        },
-      });
+        });
       await putBinding(db, {
         kind: 'constraint',
         owner: 'Resource',
@@ -159,7 +154,11 @@ describe('OM behavior portability readiness gate', () => {
     try {
       await om.defineType(runtime, 'Resource', 'resource');
       await om.defineAttribute(runtime, 'Resource', 'score', 'Number', false);
-      await om.defineComputed(runtime, 'Resource', 'score', () => 99);
+      await om.registerComputed(
+        runtime, 'Resource', 'score',
+        () => 99
+      );
+      await om.defineComputed(runtime, 'Resource', 'score');
       await om.createEntity(runtime, 'resource:computed', 'Resource', 'Resource');
       await putStoredProperty(db, 'resource:computed', 'score', 7);
       await putBinding(db, {
@@ -248,16 +247,24 @@ describe('OM behavior portability readiness gate', () => {
       await om.setProperty(runtime, 'child:parent-action', 'status', 'initial');
 
       const calls = [];
-      await om.defineAction(runtime, 'Parent', 'go', () => {
+      await om.registerAction(
+        runtime, 'Parent', 'go',
+        () => {
         calls.push('parent');
         return [];
-      });
-      await om.defineAction(runtime, 'Child', 'go', async (ctx) => {
+      }
+      );
+      await om.defineAction(runtime, 'Parent', 'go');
+      await om.registerAction(
+        runtime, 'Child', 'go',
+        async (ctx) => {
         calls.push('child');
         await ctx.setProperty('status', 'child');
         return ctx.callParentAction('go');
-      });
-      await om.addInterceptor(runtime, 'Parent', 'go', 'before', async (ctx) => {
+      }
+      );
+      await om.defineAction(runtime, 'Child', 'go');
+      await om.defineInterceptor(runtime, 'Parent', 'go', 'before', async (ctx) => {
         calls.push('before');
         await ctx.setProperty('status', 'before');
       });
@@ -286,20 +293,28 @@ describe('OM behavior portability readiness gate', () => {
       expect(await om.getProperty(runtime, 'child:parent-action', 'status')).toBe('initial');
 
       calls.length = 0;
-      await om.defineAction(runtime, 'Child', 'go', async (ctx) => {
+      await om.registerAction(
+        runtime, 'Child', 'go',
+        async (ctx) => {
         calls.push('child-no-parent');
         await ctx.setProperty('status', 'committed');
         return [];
-      });
+      }
+      );
+      await om.defineAction(runtime, 'Child', 'go');
       await om.executeAction(runtime, 'child:parent-action', 'go');
       expect(calls).toEqual(['before', 'child-no-parent']);
       expect(await om.getProperty(runtime, 'child:parent-action', 'status')).toBe('committed');
 
       calls.length = 0;
-      await om.defineAction(runtime, 'Child', 'go', async (ctx) => {
+      await om.registerAction(
+        runtime, 'Child', 'go',
+        async (ctx) => {
         calls.push('child');
         return ctx.callParentAction('go');
-      });
+      }
+      );
+      await om.defineAction(runtime, 'Child', 'go');
       om.registerAction(runtime, 'Parent', 'go', 'binding:parent-go', () => {
         calls.push('parent');
         return [];
@@ -321,14 +336,22 @@ describe('OM behavior portability readiness gate', () => {
       await om.defineType(runtime, 'Child', 'child', { parentType: 'Parent' });
       await om.createEntity(runtime, 'child:action', 'Child', 'Child');
       const calls = [];
-      await om.defineAction(runtime, 'Parent', 'deploy', () => {
+      await om.registerAction(
+        runtime, 'Parent', 'deploy',
+        () => {
         calls.push('parent-action');
         return [];
-      });
-      await om.defineAction(runtime, 'Child', 'deploy', () => {
+      }
+      );
+      await om.defineAction(runtime, 'Parent', 'deploy');
+      await om.registerAction(
+        runtime, 'Child', 'deploy',
+        () => {
         calls.push('child-action');
         return [];
-      });
+      }
+      );
+      await om.defineAction(runtime, 'Child', 'deploy');
       await putBinding(db, {
         kind: 'action',
         owner: 'Child',
@@ -364,14 +387,22 @@ describe('OM behavior portability readiness gate', () => {
       await om.setProperty(runtime, 'resource:mutation', 'status', 'initial');
 
       const calls = [];
-      await om.defineMutation(runtime, 'Resource', 'first', async (ctx) => {
+      await om.registerMutation(
+        runtime, 'Resource', 'first',
+        async (ctx) => {
         calls.push('first');
         await ctx.setProperty('status', 'first');
-      });
-      await om.defineMutation(runtime, 'Resource', 'second', async (ctx) => {
+      }
+      );
+      await om.defineMutation(runtime, 'Resource', 'first');
+      await om.registerMutation(
+        runtime, 'Resource', 'second',
+        async (ctx) => {
         calls.push('second');
         await ctx.setProperty('status', 'second');
-      });
+      }
+      );
+      await om.defineMutation(runtime, 'Resource', 'second');
       await putBinding(db, {
         kind: 'mutation',
         owner: 'Resource',
@@ -406,10 +437,14 @@ describe('OM behavior portability readiness gate', () => {
       expect(calls).toEqual([]);
       expect(await om.getProperty(runtime, 'resource:mutation', 'status')).toBe('initial');
 
-      await om.defineAction(runtime, 'Resource', 'runBatch', () => {
+      await om.registerAction(
+        runtime, 'Resource', 'runBatch',
+        () => {
         calls.push('action');
         return batch;
-      });
+      }
+      );
+      await om.defineAction(runtime, 'Resource', 'runBatch');
       await expectUnresolved(om.executeAction(runtime, 'resource:mutation', 'runBatch'), {
         kind: 'mutation',
         ownerType: 'Resource',
@@ -437,14 +472,18 @@ describe('OM behavior portability readiness gate', () => {
       await om.setProperty(runtime, 'child:interceptor', 'status', 'initial');
 
       const calls = [];
-      await om.defineAction(runtime, 'Child', 'change', () => {
+      await om.registerAction(
+        runtime, 'Child', 'change',
+        () => {
         calls.push('action');
         return [];
-      });
-      await om.addInterceptor(runtime, 'Parent', 'change', 'before', () => {
+      }
+      );
+      await om.defineAction(runtime, 'Child', 'change');
+      await om.defineInterceptor(runtime, 'Parent', 'change', 'before', () => {
         calls.push('parent-before');
       });
-      await om.addInterceptor(runtime, 'Parent', 'change', 'after', () => {
+      await om.defineInterceptor(runtime, 'Parent', 'change', 'after', () => {
         calls.push('parent-after');
       });
       await putBinding(db, {
@@ -552,17 +591,14 @@ describe('OM behavior portability readiness gate', () => {
       await om.setProperty(runtime, 'employee:write', 'status', 'active');
 
       const propertyCalls = [];
-      await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', {
-        scope: 'conditional',
-        when: async () => {
+      await await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', { scope: 'conditional' });
+      await om.registerConstraint(runtime, 'Employee', 'active_has_no_end_date', async () => {
           propertyCalls.push('when');
           return true;
-        },
-        then: async () => {
+        }, async () => {
           propertyCalls.push('then');
           return true;
-        },
-      });
+        });
       await putBinding(db, {
         kind: 'constraint',
         owner: 'Employee',
@@ -630,17 +666,14 @@ describe('OM behavior portability readiness gate', () => {
       await om.createEntity(runtime, 'employee:head', 'Employee', 'Head');
 
       const linkCalls = [];
-      await om.defineConstraint(runtime, 'Department', 'head_guard', {
-        scope: 'cross-entity',
-        when: async () => {
+      await await om.defineConstraint(runtime, 'Department', 'head_guard', { scope: 'cross-entity' });
+      await om.registerConstraint(runtime, 'Department', 'head_guard', async () => {
           linkCalls.push('when');
           return true;
-        },
-        then: async () => {
+        }, async () => {
           linkCalls.push('then');
           return true;
-        },
-      });
+        });
       await putBinding(db, {
         kind: 'constraint',
         owner: 'Department',

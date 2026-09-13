@@ -4,7 +4,7 @@ const { createTestDb } = require('./helpers');
 
 describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation', () => {
   test('path witness: subject -owns-> resource yields allow + witness hop', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'User', 'User');
       await om.defineType(db, 'Resource', 'Resource');
@@ -12,7 +12,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
 
       await om.createEntity(db, 'u:1', 'User', 'User 1');
       await om.createEntity(db, 'a:1', 'Resource', 'Resource 1');
-      await om.linkEntities(db, 'u:1', 'owns', 'a:1');
+      await om.linkEntities(runtime, 'u:1', 'owns', 'a:1');
 
       await om.seedPermissionMetadata(db, {
         policies: [
@@ -29,7 +29,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
       });
 
       expect(typeof om.checkAccess).toBe('function');
-      const result = await om.checkAccess(db, {
+      const result = await om.checkAccess(runtime, {
         subjectId: 'u:1',
         action: 'read',
         resourceId: 'a:1',
@@ -50,7 +50,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
   });
 
   test('ABAC allow/deny: deny overrides allow when subject.location != HQ', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'User', 'User');
       await om.defineType(db, 'Resource', 'Resource');
@@ -60,7 +60,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
 
       await om.createEntity(db, 'u:1', 'User', 'User 1');
       await om.createEntity(db, 'a:1', 'Resource', 'Resource 1');
-      await om.linkEntities(db, 'u:1', 'owns', 'a:1');
+      await om.linkEntities(runtime, 'u:1', 'owns', 'a:1');
 
       await om.seedPermissionMetadata(db, {
         policies: [
@@ -91,14 +91,14 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
         ],
       });
 
-      await om.setProperty(db, 'u:1', 'role', 'admin');
-      await om.setProperty(db, 'u:1', 'location', 'HQ');
+      await om.setProperty(runtime, 'u:1', 'role', 'admin');
+      await om.setProperty(runtime, 'u:1', 'location', 'HQ');
 
-      const ok = await om.checkAccess(db, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
+      const ok = await om.checkAccess(runtime, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
       expect(ok.allow).toBe(true);
 
-      await om.setProperty(db, 'u:1', 'location', 'Remote');
-      const denied = await om.checkAccess(db, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
+      await om.setProperty(runtime, 'u:1', 'location', 'Remote');
+      const denied = await om.checkAccess(runtime, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
       expect(denied.allow).toBe(false);
       const denyMatched = (denied.matchedPolicies || []).some((p) => p.policyId === 'pol:deny:not-hq' && p.effect === 'deny');
       expect(denyMatched).toBe(true);
@@ -108,7 +108,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
   });
 
   test('field-level hide: ABAC rule field.secret hide true sets fieldVisibility.secret=hidden', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'User', 'User');
       await om.defineType(db, 'Resource', 'Resource');
@@ -116,7 +116,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
 
       await om.createEntity(db, 'u:1', 'User', 'User 1');
       await om.createEntity(db, 'a:1', 'Resource', 'Resource 1');
-      await om.linkEntities(db, 'u:1', 'owns', 'a:1');
+      await om.linkEntities(runtime, 'u:1', 'owns', 'a:1');
 
       await om.seedPermissionMetadata(db, {
         policies: [
@@ -133,7 +133,7 @@ describe('P3/WAVE-P3-02 (T3.2): checkAccess (hybrid path + ABAC) + explanation',
         abacRules: [{ policy_id: 'pol:allow:hide-secret', left_ref: 'field.secret', op: 'hide', right_ref: 'true' }],
       });
 
-      const result = await om.checkAccess(db, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
+      const result = await om.checkAccess(runtime, { subjectId: 'u:1', action: 'read', resourceId: 'a:1' });
       expect(result.allow).toBe(true);
       expect(result.fieldVisibility).toEqual({ secret: 'hidden' });
     } finally {

@@ -14,7 +14,7 @@ async function listRows(db, relation) {
 
 describe('OM governance API parity: cascading entity deletion', () => {
   test('deleteEntity physically removes entity property history and all touching edge history', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Person', 'Person');
       await om.defineAttribute(db, 'Person', 'note', 'String', false);
@@ -23,15 +23,15 @@ describe('OM governance API parity: cascading entity deletion', () => {
         await om.createEntity(db, id, 'Person', id);
       }
 
-      await om.setProperty(db, 'target', 'note', 'old', { validTime: '2000-01-01T00:00:00Z' });
-      await om.setProperty(db, 'target', 'note', 'new', { validTime: '2001-01-01T00:00:00Z' });
-      await om.setProperty(db, 'unrelated', 'note', 'keep', { validTime: '2000-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'incoming', 'knows', 'target', {}, { validTime: '2000-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'target', 'knows', 'outgoing', {}, { validTime: '2000-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'target', 'knows', 'outgoing', {}, { validTime: '2001-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'incoming', 'knows', 'outgoing', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'target', 'note', 'old', { validTime: '2000-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'target', 'note', 'new', { validTime: '2001-01-01T00:00:00Z' });
+      await om.setProperty(runtime, 'unrelated', 'note', 'keep', { validTime: '2000-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'incoming', 'knows', 'target', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'target', 'knows', 'outgoing', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'target', 'knows', 'outgoing', {}, { validTime: '2001-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'incoming', 'knows', 'outgoing', {}, { validTime: '2000-01-01T00:00:00Z' });
 
-      await om.deleteEntity(db, 'target');
+      await om.deleteEntity(runtime, 'target');
 
       expect((await listRows(db, 'om_entity')).map(([id]) => id).sort()).toEqual(['incoming', 'outgoing', 'unrelated']);
       expect((await listRows(db, 'om_property')).filter(([entityId]) => entityId === 'target')).toEqual([]);
@@ -44,13 +44,13 @@ describe('OM governance API parity: cascading entity deletion', () => {
   });
 
   test('deleteEntity is a harmless no-op for a missing entity', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Person', 'Person');
       await om.createEntity(db, 'survivor', 'Person', 'Survivor');
 
-      await om.deleteEntity(db, 'missing');
-      await om.deleteEntity(db, 'missing');
+      await om.deleteEntity(runtime, 'missing');
+      await om.deleteEntity(runtime, 'missing');
 
       expect((await listRows(db, 'om_entity')).map(([id]) => id)).toEqual(['survivor']);
     } finally {

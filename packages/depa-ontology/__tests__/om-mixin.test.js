@@ -3,7 +3,7 @@ const { createTestDb } = require('./helpers');
 
 describe('defineMixin', () => {
   test('defineMixin creates a mixin that can be queried', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
 
@@ -15,7 +15,7 @@ describe('defineMixin', () => {
   });
 
   test('defineMixin can define multiple mixins', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
       await om.defineMixin(db, 'Taggable', 'Supports tags');
@@ -30,7 +30,7 @@ describe('defineMixin', () => {
 
 describe('defineType with mixins', () => {
   test('defineType with valid mixins works', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
       await om.defineType(db, 'Resource', 'Resource', { mixins: ['Auditable'] });
@@ -45,7 +45,7 @@ describe('defineType with mixins', () => {
   });
 
   test('defineType with unknown mixin throws', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await expect(
         om.defineType(db, 'Resource', 'Resource', { mixins: ['NonExistentMixin'] })
@@ -56,7 +56,7 @@ describe('defineType with mixins', () => {
   });
 
   test('defineType with mix of valid and unknown mixins throws on the unknown one', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
 
@@ -69,7 +69,7 @@ describe('defineType with mixins', () => {
   });
 
   test('defineType with parentType and mixins together works', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
       await om.defineType(db, 'Resource', 'Resource');
@@ -86,7 +86,7 @@ describe('defineType with mixins', () => {
   });
 
   test('mixin attributes are inherited by type', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Tracks audit fields');
       await om.defineAttribute(db, 'Auditable', 'created_by', 'String', false);
@@ -95,11 +95,11 @@ describe('defineType with mixins', () => {
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
 
       await om.createEntity(db, 'a:1', 'Resource', 'My Resource');
-      await om.setProperty(db, 'a:1', 'name', 'Test');
+      await om.setProperty(runtime, 'a:1', 'name', 'Test');
       // Should be able to set mixin-inherited attribute
-      await om.setProperty(db, 'a:1', 'created_by', 'admin');
+      await om.setProperty(runtime, 'a:1', 'created_by', 'admin');
 
-      const val = await om.getProperty(db, 'a:1', 'created_by');
+      const val = await om.getProperty(runtime, 'a:1', 'created_by');
       expect(val).toBe('admin');
     } finally {
       db.close();

@@ -55,8 +55,6 @@ function _createRegistryOwner() {
   };
 }
 
-const _legacyRegistryOwner = _createRegistryOwner();
-
 function _isOmRuntime(value) {
   return !!value && value[_OM_RUNTIME_BRAND] === true;
 }
@@ -86,11 +84,22 @@ function createOmRuntime(runner) {
   });
 }
 
+/**
+ * Resolve the registry owner carried by an OM runtime.
+ *
+ * There is deliberately no module-level fallback: a registry is an app/session-scoped
+ * resource and belongs to `runtime` (see DEPA runtime 归位). Falling back to a process
+ * singleton made two databases in one process share (and overwrite) each other's
+ * behaviors, so a bare runner is now an error rather than a silent default.
+ */
 function _registryOwnerOf(value) {
   if (_isOmRuntime(value) || _isResolutionScope(value)) {
     return value[_OM_REGISTRY_OWNER];
   }
-  return _legacyRegistryOwner;
+  throw new TypeError(
+    'om API expects an OM runtime created by createOmRuntime; bare runners no longer '
+    + 'resolve a registry (a process-wide singleton would let two databases share behaviors)'
+  );
 }
 
 function _captureResolutionScope(value) {
@@ -180,10 +189,17 @@ function _deleteTypeBehavior(owner, registryKey, typeName, behaviorName) {
   });
 }
 
+/**
+ * Empty one runtime's registry. There is no process-wide variant: clearing "the"
+ * registry is exactly the pattern that let one database wipe another's behaviors, so
+ * the runtime now has to be named.
+ */
 function clearRegistry(runtime) {
   if (runtime === undefined) {
-    _legacyRegistryOwner.snapshot = _emptyRegistrySnapshot();
-    return;
+    throw new TypeError(
+      'clearRegistry requires an OM runtime created by createOmRuntime '
+      + '(there is no process-wide registry to clear)'
+    );
   }
   if (!_isOmRuntime(runtime)) {
     throw new Error('clearRegistry expects an OM runtime created by createOmRuntime');
@@ -2245,7 +2261,16 @@ function _normalizeConstraintType(scope) {
   throw new Error(`Unsupported constraint scope '${scope}'`);
 }
 
-async function defineConstraint(runner, typeName, constraintName, def) {
+/**
+ * Declare a constraint: persists the definition row only.
+ *
+ * Callbacks are runtime resources, not definition data — a stored definition must stay
+ * serialisable and cannot hold a function. Attach them with `registerConstraint`
+ * (scoped) or `registerValidator` (custom). That split is why the params shrank to
+ * `{ scope, message }`.
+ */
+async function defineConstraint(runtime, typeName, constraintName, def) {
+  _requireRegistrationRuntime(runtime, 'defineConstraint');
   const tn = String(typeName || '').trim();
   const cn = String(constraintName || '').trim();
   if (!tn) throw new Error('Type name is required');
@@ -2256,33 +2281,17 @@ async function defineConstraint(runner, typeName, constraintName, def) {
 
   const constraintType = _normalizeConstraintType(def.scope);
   const message = def.message != null ? String(def.message) : '';
-  const whenFn = def.when;
-  const thenFn = def.then;
-  const validator = def.validator;
-
-  if (constraintType === 'custom') {
-    if (typeof validator !== 'function') {
-      throw new Error('Custom constraint definition must provide a validator(ctx) function');
-    }
-    if (whenFn !== undefined || thenFn !== undefined) {
-      throw new Error('Custom constraint definition cannot provide when(ctx) or then(ctx)');
-    }
-  } else {
-    if (validator !== undefined) {
-      throw new Error('Scoped constraint definition cannot provide validator(ctx)');
-    }
-    if (typeof whenFn !== 'function') {
-      throw new Error('Constraint definition must provide a when(ctx) function');
-    }
-    if (typeof thenFn !== 'function') {
-      throw new Error('Constraint definition must provide a then(ctx) function');
-    }
+  if (def.when !== undefined || def.then !== undefined || def.validator !== undefined) {
+    throw new Error(
+      'defineConstraint declares the definition only; attach callbacks with '
+      + "registerConstraint (scope: 'conditional') or registerValidator (scope: 'custom')"
+    );
   }
 
-  await _ensureBehaviorTypeExists(runner, tn);
+  await _ensureBehaviorTypeExists(runtime, tn);
 
   await runDslRows(
-    runner,
+    runtime,
     query()
       .input({
         type_name: param('type_name', tn),
@@ -2292,42 +2301,20 @@ async function defineConstraint(runner, typeName, constraintName, def) {
       })
       .put('om_constraint_def', ['type_name', 'constraint_name'], ['constraint_type', 'message'])
   );
-
-  const owner = _registryOwnerOf(runner);
-  if (constraintType === 'custom') {
-    _deleteTypeBehavior(owner, 'constraints', tn, cn);
-    _setTypeBehavior(owner, 'validators', tn, cn, {
-      validator,
-      bindingId: null,
-      ownerType: tn,
-    });
-  } else {
-    _deleteTypeBehavior(owner, 'validators', tn, cn);
-    _setTypeBehavior(owner, 'constraints', tn, cn, {
-      constraintType,
-      message,
-      when: whenFn,
-      then: thenFn,
-      whenBindingId: null,
-      thenBindingId: null,
-      ownerType: tn,
-    });
-  }
 }
 
-async function defineComputed(runner, typeName, attrName, computeFn, description = '') {
-  if (typeof computeFn !== 'function') {
-    throw new Error('Computed function must be a function');
-  }
+/** Declare a computed attribute: persists the definition row only (see defineConstraint). */
+async function defineComputed(runtime, typeName, attrName, description = '') {
+  _requireRegistrationRuntime(runtime, 'defineComputed');
   const tn = String(typeName || '').trim();
   const an = String(attrName || '').trim();
   if (!tn) throw new Error('Type name is required');
   if (!an) throw new Error('Attribute name is required');
 
-  await _ensureBehaviorTypeExists(runner, tn);
+  await _ensureBehaviorTypeExists(runtime, tn);
 
   await runDslRows(
-    runner,
+    runtime,
     query()
       .input({
         type_name: param('type_name', tn),
@@ -2336,13 +2323,6 @@ async function defineComputed(runner, typeName, attrName, computeFn, description
       })
       .put('om_computed_def', ['type_name', 'attr_name'], ['description'])
   );
-
-  _setTypeBehavior(_registryOwnerOf(runner), 'computed', tn, an, {
-    computeFn,
-    description: String(description || ''),
-    bindingId: null,
-    ownerType: tn,
-  });
 }
 
 async function _resolveComputedDef(runner, typeName, attrName) {
@@ -2576,19 +2556,18 @@ async function _withWriteTxIfPossible(runner, fn) {
   return fn(scope);
 }
 
-async function defineMutation(runner, typeName, mutationName, executor, description = '') {
-  if (typeof executor !== 'function') {
-    throw new Error('Mutation executor must be a function');
-  }
+/** Declare a mutation: persists the definition row only (see defineConstraint). */
+async function defineMutation(runtime, typeName, mutationName, description = '') {
+  _requireRegistrationRuntime(runtime, 'defineMutation');
   const tn = String(typeName || '').trim();
   const mn = String(mutationName || '').trim();
   if (!tn) throw new Error('Type name is required');
   if (!mn) throw new Error('Mutation name is required');
 
-  await _ensureBehaviorTypeExists(runner, tn);
+  await _ensureBehaviorTypeExists(runtime, tn);
 
   await runDslRows(
-    runner,
+    runtime,
     query()
       .input({
         type_name: param('type_name', tn),
@@ -2597,34 +2576,20 @@ async function defineMutation(runner, typeName, mutationName, executor, descript
       })
       .put('om_mutation_def', ['type_name', 'mutation_name'], ['description'])
   );
-
-  _setTypeBehavior(
-    _registryOwnerOf(runner),
-    'mutations',
-    tn,
-    mn,
-    {
-      executor,
-      description: String(description || ''),
-      bindingId: null,
-      ownerType: tn,
-    }
-  );
 }
 
-async function defineAction(runner, typeName, actionName, handler, description = '') {
-  if (typeof handler !== 'function') {
-    throw new Error('Action handler must be a function');
-  }
+/** Declare an action: persists the definition row only (see defineConstraint). */
+async function defineAction(runtime, typeName, actionName, description = '') {
+  _requireRegistrationRuntime(runtime, 'defineAction');
   const tn = String(typeName || '').trim();
   const an = String(actionName || '').trim();
   if (!tn) throw new Error('Type name is required');
   if (!an) throw new Error('Action name is required');
 
-  await _ensureBehaviorTypeExists(runner, tn);
+  await _ensureBehaviorTypeExists(runtime, tn);
 
   await runDslRows(
-    runner,
+    runtime,
     query()
       .input({
         type_name: param('type_name', tn),
@@ -2632,19 +2597,6 @@ async function defineAction(runner, typeName, actionName, handler, description =
         description: param('description', String(description || '')),
       })
       .put('om_action_def', ['type_name', 'action_name'], ['description'])
-  );
-
-  _setTypeBehavior(
-    _registryOwnerOf(runner),
-    'actions',
-    tn,
-    an,
-    {
-      handler,
-      description: String(description || ''),
-      bindingId: null,
-      ownerType: tn,
-    }
   );
 }
 
@@ -2742,7 +2694,17 @@ function _normalizeInterceptorPhase(phase) {
   return p;
 }
 
-async function addInterceptor(runner, typeName, actionName, phase, handler, description = '') {
+/**
+ * Declare an interceptor.
+ *
+ * Unlike the other four behaviors this one stays atomic: an interceptor has no
+ * meaning without its handler, and its `seq` is derived from what is already
+ * declared, so splitting definition from registration would just invent a
+ * half-declared state. It still requires an explicit runtime like every other
+ * registration API.
+ */
+async function defineInterceptor(runtime, typeName, actionName, phase, handler, description = '') {
+  _requireRegistrationRuntime(runtime, 'defineInterceptor');
   if (typeof handler !== 'function') {
     throw new Error('Interceptor handler must be a function');
   }
@@ -2752,15 +2714,15 @@ async function addInterceptor(runner, typeName, actionName, phase, handler, desc
   if (!tn) throw new Error('Type name is required');
   if (!an) throw new Error('Action name is required');
 
-  await _ensureBehaviorTypeExists(runner, tn);
+  await _ensureBehaviorTypeExists(runtime, tn);
 
-  const owner = _registryOwnerOf(runner);
+  const owner = _registryOwnerOf(runtime);
   const currentRegistry = owner.snapshot.interceptors;
   const currentTypeMap = currentRegistry.get(tn);
   const currentEntry = currentTypeMap && currentTypeMap.get(an);
   const entry = currentEntry || { before: [], after: [] };
   const persistedRows = await runRows(
-    runner,
+    runtime,
     `
 ?[seq] :=
   *om_interceptor_def{
@@ -2783,7 +2745,7 @@ async function addInterceptor(runner, typeName, actionName, phase, handler, desc
   const seq = Math.max(persistedMax, runtimeMax) + 1;
 
   await runDslRows(
-    runner,
+    runtime,
     query()
       .input({
         type_name: param('type_name', tn),
@@ -3098,6 +3060,19 @@ async function initSchema(runner) {
   await _runDslCreateIgnoreConflict(
     runner,
     query().create('om_rel_desc', ['rel_name'], ['description'])
+  );
+  // Relation metadata is deliberately LAYERED, not merged into om_rel_def:
+  //   om_rel_def  — structure: which types this relation connects ("what it is")
+  //   om_rel_meta — semantics: cardinality/optional/role/on_delete ("how it is used")
+  // The two have different owners and different consumers (type checks read the former,
+  // derivation and traversal read the latter), and no fact is written twice across them.
+  // Keeping them apart also leaves the existing 4-column `om_rel_def` put (and the
+  // schema-snapshot replace) working untouched.
+  // A relation absent from this table declares NO semantics: readers get null and must
+  // decide for themselves — an undeclared relation is never given a silent default.
+  await _runDslCreateIgnoreConflict(
+    runner,
+    query().create('om_rel_meta', ['rel_name'], ['cardinality', 'optional', 'role', 'on_delete'])
   );
 
   // P1/WAVE-P1-01: schema versioning + alias metadata.
@@ -6428,7 +6403,238 @@ async function defineAttribute(runner, typeName, attrName, valueType, required =
   }
 }
 
-async function defineRelation(runner, relName, fromType, toType, directed = true, description) {
+const REL_META_CARDINALITIES = new Set(['many_to_one', 'one_to_many', 'many_to_many', 'one_to_one']);
+const REL_META_ROLES = new Set(['ownership', 'composition', 'association', 'hierarchy']);
+const REL_META_ON_DELETE = new Set(['no_action', 'retract_edges', 'restrict']);
+
+function _normalizeRelMeta(meta) {
+  const raw = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  const out = {};
+  if (raw.cardinality !== undefined && raw.cardinality !== null && String(raw.cardinality).trim() !== '') {
+    const value = String(raw.cardinality).trim();
+    if (!REL_META_CARDINALITIES.has(value)) {
+      throw new Error(
+        `rel meta cardinality must be one of ${[...REL_META_CARDINALITIES].join(', ')}, got '${value}'`
+      );
+    }
+    out.cardinality = value;
+  }
+  if (raw.role !== undefined && raw.role !== null && String(raw.role).trim() !== '') {
+    const value = String(raw.role).trim();
+    if (!REL_META_ROLES.has(value)) {
+      throw new Error(`rel meta role must be one of ${[...REL_META_ROLES].join(', ')}, got '${value}'`);
+    }
+    out.role = value;
+  }
+  if (raw.on_delete !== undefined && raw.on_delete !== null && String(raw.on_delete).trim() !== '') {
+    const value = String(raw.on_delete).trim();
+    if (!REL_META_ON_DELETE.has(value)) {
+      throw new Error(
+        `rel meta on_delete must be one of ${[...REL_META_ON_DELETE].join(', ')}, got '${value}'`
+      );
+    }
+    out.on_delete = value;
+  }
+  if (raw.optional !== undefined && raw.optional !== null) {
+    out.optional = raw.optional === true || raw.optional === 'true';
+  }
+  return out;
+}
+
+async function setRelationMeta(runner, relName, meta) {
+  const canonicalRelName = await resolveRel(runner, relName);
+  const normalized = _normalizeRelMeta(meta);
+  const keys = Object.keys(normalized);
+  if (!keys.length) return;
+  await runDslRows(
+    runner,
+    query()
+      .input({
+        rel_name: param('rel_name', canonicalRelName),
+        cardinality: param('cardinality', normalized.cardinality ?? null),
+        optional: param('optional', normalized.optional ?? null),
+        role: param('role', normalized.role ?? null),
+        on_delete: param('on_delete', normalized.on_delete ?? null),
+      })
+      .put('om_rel_meta', ['rel_name'], ['cardinality', 'optional', 'role', 'on_delete'])
+  );
+}
+
+async function getRelationMeta(runner, relName) {
+  const canonicalRelName = await resolveRel(runner, relName);
+  const rows = await runDslRows(
+    runner,
+    query()
+      .select(['cardinality', 'optional', 'role', 'on_delete'])
+      .fromStored('om_rel_meta', {
+        rel_name: param('rel_name', canonicalRelName),
+        cardinality: dsl.var('cardinality'),
+        optional: dsl.var('optional'),
+        role: dsl.var('role'),
+        on_delete: dsl.var('on_delete'),
+      })
+      .limit(1)
+  );
+  if (!rows.length) return null;
+  const [cardinality, optional, role, onDelete] = rows[0];
+  return {
+    cardinality: cardinality == null ? null : String(cardinality),
+    optional: optional == null ? null : !!optional,
+    role: role == null ? null : String(role),
+    onDelete: onDelete == null ? null : String(onDelete),
+  };
+}
+
+/**
+ * Relations filtered by declared role. Callers that need "the relations that mean X"
+ * read them from here so the model stays the single source instead of a literal list.
+ */
+async function listRelationsByRole(runner, roles) {
+  const wanted = (Array.isArray(roles) ? roles : [roles])
+    .map((r) => String(r || '').trim())
+    .filter(Boolean);
+  if (!wanted.length) throw new Error('listRelationsByRole requires at least one role');
+  for (const role of wanted) {
+    if (!REL_META_ROLES.has(role)) {
+      throw new Error(`role must be one of ${[...REL_META_ROLES].join(', ')}, got '${role}'`);
+    }
+  }
+  const roleSet = new Set(wanted);
+  const rows = await runDslRows(
+    runner,
+    query()
+      .select(['rel_name', 'role'])
+      .fromStored('om_rel_meta', {
+        rel_name: dsl.var('rel_name'),
+        role: dsl.var('role'),
+      })
+      .order('rel_name')
+  );
+  return rows
+    .filter(([, role]) => role != null && roleSet.has(String(role)))
+    .map(([relName]) => String(relName));
+}
+
+/**
+ * Relations usable as "ownership" traversal roots, derived from declared metadata.
+ * Relations without metadata are not included, so callers must not silently fall back
+ * to a hand-written list.
+ */
+async function listOwnerRelations(runner, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const roles = Array.isArray(opts.roles) && opts.roles.length
+    ? opts.roles.map((r) => String(r).trim()).filter(Boolean)
+    : ['ownership', 'composition'];
+  return listRelationsByRole(runner, roles);
+}
+
+async function listRelationsWithMeta(runner) {
+  const rels = await runDslRows(
+    runner,
+    query()
+      .select(['rel_name', 'from_type', 'to_type', 'directed'])
+      .fromStored('om_rel_def', {
+        rel_name: dsl.var('rel_name'),
+        from_type: dsl.var('from_type'),
+        to_type: dsl.var('to_type'),
+        directed: dsl.var('directed'),
+      })
+      .order('rel_name')
+  );
+  const metaRows = await runDslRows(
+    runner,
+    query()
+      .select(['rel_name', 'cardinality', 'optional', 'role', 'on_delete'])
+      .fromStored('om_rel_meta', {
+        rel_name: dsl.var('rel_name'),
+        cardinality: dsl.var('cardinality'),
+        optional: dsl.var('optional'),
+        role: dsl.var('role'),
+        on_delete: dsl.var('on_delete'),
+      })
+  );
+  const metaByName = new Map(
+    metaRows.map(([relName, cardinality, optional, role, onDelete]) => [
+      String(relName),
+      {
+        cardinality: cardinality == null ? null : String(cardinality),
+        optional: optional == null ? null : !!optional,
+        role: role == null ? null : String(role),
+        onDelete: onDelete == null ? null : String(onDelete),
+      },
+    ])
+  );
+  return rels.map(([relName, fromType, toType, directed]) => ({
+    name: String(relName),
+    fromType: String(fromType),
+    toType: String(toType),
+    directed: !!directed,
+    meta: metaByName.get(String(relName)) || null,
+  }));
+}
+
+/**
+ * Derive the "swap owner" write plan for a functional relation.
+ *
+ * A many_to_one / one_to_one relation is decided by its owner: pointing it at a new
+ * target is one intent ("换 owner"), which in graph terms is unlink-old + link-new.
+ * many_to_many has no such derivation — multiple edges are all valid, so there is
+ * nothing to replace — and this throws rather than guessing.
+ *
+ * Returns a declarative plan the caller can hand to executeMutations; it performs
+ * no writes itself, so the plan stays printable and reviewable.
+ */
+async function deriveRelationSwap(runner, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const fromId = String(opts.fromId || '').trim();
+  const relName = String(opts.relName || '').trim();
+  const toId = String(opts.toId || '').trim();
+  if (!fromId) throw new Error('deriveRelationSwap requires fromId');
+  if (!relName) throw new Error('deriveRelationSwap requires relName');
+  if (!toId) throw new Error('deriveRelationSwap requires toId');
+
+  const canonicalRelName = await resolveRel(runner, relName);
+  const meta = await getRelationMeta(runner, canonicalRelName);
+  if (!meta || !meta.cardinality) {
+    throw new Error(
+      `Relation '${canonicalRelName}' declares no cardinality; owner swap cannot be derived`
+    );
+  }
+  if (meta.cardinality !== 'many_to_one' && meta.cardinality !== 'one_to_one') {
+    throw new Error(
+      `Relation '${canonicalRelName}' is ${meta.cardinality}; owner swap derivation only applies to many_to_one / one_to_one`
+    );
+  }
+
+  const neighbors = await getNeighbors(runner, fromId, canonicalRelName, 'outgoing');
+  const current = ((neighbors && neighbors.outgoing) || []).map((n) => n.entityId);
+  const unlink = current.filter((id) => id !== toId);
+
+  return {
+    relName: canonicalRelName,
+    cardinality: meta.cardinality,
+    fromId,
+    toId,
+    unlink,
+    link: toId,
+    // Applying a no-op swap is a no-op: same target already linked, nothing to retract.
+    isNoop: unlink.length === 0 && current.includes(toId),
+  };
+}
+
+/** Apply a deriveRelationSwap plan. Writes only; caller owns the transaction. */
+async function applyRelationSwap(runner, plan) {
+  const p = plan && typeof plan === 'object' ? plan : {};
+  if (!p.fromId || !p.relName || !p.toId) {
+    throw new Error('applyRelationSwap requires a plan with fromId / relName / toId');
+  }
+  for (const oldTarget of Array.isArray(p.unlink) ? p.unlink : []) {
+    await unlinkEntities(runner, p.fromId, p.relName, oldTarget);
+  }
+  await linkEntities(runner, p.fromId, p.relName, p.toId, p.props || {});
+}
+
+async function defineRelation(runner, relName, fromType, toType, directed = true, description, meta) {
   const canonicalRelName = await resolveRel(runner, relName);
   const canonicalFromType = await resolveType(runner, fromType);
   const canonicalToType = await resolveType(runner, toType);
@@ -6455,6 +6661,10 @@ async function defineRelation(runner, relName, fromType, toType, directed = true
         })
         .put('om_rel_desc', ['rel_name'], ['description'])
     );
+  }
+
+  if (meta !== undefined && meta !== null) {
+    await setRelationMeta(runner, canonicalRelName, meta);
   }
 }
 
@@ -8748,12 +8958,19 @@ module.exports = {
   defineMixin,
   defineAttribute,
   defineRelation,
+  setRelationMeta,
+  getRelationMeta,
+  listOwnerRelations,
+  listRelationsByRole,
+  deriveRelationSwap,
+  applyRelationSwap,
+  listRelationsWithMeta,
   defineAction,
   executeAction,
   callParentAction,
   defineMutation,
   executeMutations,
-  addInterceptor,
+  defineInterceptor,
   defineConstraint,
   validateConstraints,
   defineComputed,

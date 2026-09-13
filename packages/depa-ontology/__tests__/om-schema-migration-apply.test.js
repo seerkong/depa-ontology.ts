@@ -77,8 +77,8 @@ function isNonEmptySnapshot(value) {
 }
 
 describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
-  test('om.applySchemaMigration(db, spec) exists', async () => {
-    const { db, om } = await createTestDb();
+  test('om.applySchemaMigration(runtime, spec) exists', async () => {
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.applySchemaMigration).toBe('function');
     } finally {
@@ -87,7 +87,7 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
   });
 
   test('applies v1->v2 migration, writes migration log + snapshot + alias mapping', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       if (typeof om.applySchemaMigration !== 'function') {
         throw new Error('applySchemaMigration is not implemented');
@@ -137,7 +137,7 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
         ],
       };
 
-      await om.applySchemaMigration(db, spec);
+      await om.applySchemaMigration(runtime, spec);
 
       const state1 = await om.getSchemaState(db);
       expect(state1.currentVersion).toBe(2);
@@ -172,7 +172,7 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
   });
 
   test('strict preflight rejects incompatible valueType change', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       if (typeof om.applySchemaMigration !== 'function') {
         throw new Error('applySchemaMigration is not implemented');
@@ -182,7 +182,7 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
       await om.defineAttribute(db, 'Employee', 'code', 'String', false);
 
       await om.createEntity(db, 'emp:vtype-1', 'Employee', 'Alice');
-      await om.setProperty(db, 'emp:vtype-1', 'code', 'not-a-number', {
+      await om.setProperty(runtime, 'emp:vtype-1', 'code', 'not-a-number', {
         validTime: '2000-01-01T00:00:00Z',
       });
 
@@ -209,7 +209,7 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
         ],
       };
 
-      await expect(om.applySchemaMigration(db, spec)).rejects.toThrow(
+      await expect(om.applySchemaMigration(runtime, spec)).rejects.toThrow(
         /value\s*type|valuetype|type\s*mismatch|mismatch|convert|cannot\s+change/i
       );
 
@@ -221,17 +221,17 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
   });
 
   test('omitted strict defaults to preflight and preserves the v1 schema state', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'DefaultStrictEmployee', 'Default strict employee');
       await om.defineAttribute(db, 'DefaultStrictEmployee', 'code', 'String', false);
       await om.createEntity(db, 'emp:default-strict-1', 'DefaultStrictEmployee', 'Alice');
-      await om.setProperty(db, 'emp:default-strict-1', 'code', 'not-a-number', {
+      await om.setProperty(runtime, 'emp:default-strict-1', 'code', 'not-a-number', {
         validTime: '2000-01-01T00:00:00Z',
       });
 
       await expect(
-        om.applySchemaMigration(db, {
+        om.applySchemaMigration(runtime, {
           migrationId: 'm-default-strict',
           fromVersion: 1,
           toVersion: 2,
@@ -253,10 +253,10 @@ describe('P2/WAVE-P2-01 (T2.1.1): applySchemaMigration', () => {
   });
 
   test('failed later step rolls back earlier schema writes', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await expect(
-        om.applySchemaMigration(db, {
+        om.applySchemaMigration(runtime, {
           migrationId: 'm-atomic-step-failure',
           fromVersion: 1,
           toVersion: 2,

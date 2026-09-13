@@ -5,20 +5,17 @@ const dsl = require('depa-datalog');
 
 describe('Phase 2 (track add-action-and-constraints): conditional constraints', () => {
   test('defineConstraint stores metadata in om_constraint_def', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'status', 'String', true);
       await om.defineAttribute(db, 'Employee', 'end_date', 'String', false);
 
-      await om.defineConstraint(db, 'Employee', 'active_has_no_end_date', {
-        when: async (ctx) => (await ctx.getProperty('status')) === 'active',
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', { scope: 'conditional', message: 'end_date must be empty when status=active' });
+      await om.registerConstraint(runtime, 'Employee', 'active_has_no_end_date', async (ctx) => (await ctx.getProperty('status')) === 'active', async (ctx) => {
           const v = await ctx.getProperty('end_date');
           return v === undefined || v === null || String(v).trim() === '';
-        },
-        message: 'end_date must be empty when status=active',
-      });
+        });
 
       const q = dsl.query()
         .select(['constraint_type', 'message'])
@@ -40,25 +37,22 @@ describe('Phase 2 (track add-action-and-constraints): conditional constraints', 
   });
 
   test('validateConstraints passes for conditional constraint', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'status', 'String', true);
       await om.defineAttribute(db, 'Employee', 'end_date', 'String', false);
 
-      await om.defineConstraint(db, 'Employee', 'active_has_no_end_date', {
-        when: async (ctx) => (await ctx.getProperty('status')) === 'active',
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', { scope: 'conditional', message: 'end_date must be empty when status=active' });
+      await om.registerConstraint(runtime, 'Employee', 'active_has_no_end_date', async (ctx) => (await ctx.getProperty('status')) === 'active', async (ctx) => {
           const v = await ctx.getProperty('end_date');
           return v === undefined || v === null || String(v).trim() === '';
-        },
-        message: 'end_date must be empty when status=active',
-      });
+        });
 
       await om.createEntity(db, 'emp:1', 'Employee', 'Alice');
-      await om.setProperty(db, 'emp:1', 'status', 'active');
+      await om.setProperty(runtime, 'emp:1', 'status', 'active');
 
-      const result = await om.validateConstraints(db, 'emp:1');
+      const result = await om.validateConstraints(runtime, 'emp:1');
       expect(result.valid).toBe(true);
       expect(Array.isArray(result.errors)).toBe(true);
       expect(result.errors.length).toBe(0);
@@ -68,26 +62,23 @@ describe('Phase 2 (track add-action-and-constraints): conditional constraints', 
   });
 
   test('validateConstraints fails with constraint name and message', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'status', 'String', true);
       await om.defineAttribute(db, 'Employee', 'end_date', 'String', false);
 
-      await om.defineConstraint(db, 'Employee', 'active_has_no_end_date', {
-        when: async (ctx) => (await ctx.getProperty('status')) === 'active',
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', { scope: 'conditional', message: 'end_date must be empty when status=active' });
+      await om.registerConstraint(runtime, 'Employee', 'active_has_no_end_date', async (ctx) => (await ctx.getProperty('status')) === 'active', async (ctx) => {
           const v = await ctx.getProperty('end_date');
           return v === undefined || v === null || String(v).trim() === '';
-        },
-        message: 'end_date must be empty when status=active',
-      });
+        });
 
       await om.createEntity(db, 'emp:2', 'Employee', 'Bob');
-      await om.setProperty(db, 'emp:2', 'status', 'active');
-      await om.setProperty(db, 'emp:2', 'end_date', '2026-12-31', { skipConstraints: true });
+      await om.setProperty(runtime, 'emp:2', 'status', 'active');
+      await om.setProperty(runtime, 'emp:2', 'end_date', '2026-12-31', { skipConstraints: true });
 
-      const result = await om.validateConstraints(db, 'emp:2');
+      const result = await om.validateConstraints(runtime, 'emp:2');
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors.join('\n')).toMatch(/active_has_no_end_date/);
@@ -98,32 +89,29 @@ describe('Phase 2 (track add-action-and-constraints): conditional constraints', 
   });
 
   test('setProperty triggers conditional constraints unless skipConstraints is true', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineAttribute(db, 'Employee', 'status', 'String', true);
       await om.defineAttribute(db, 'Employee', 'end_date', 'String', false);
 
-      await om.defineConstraint(db, 'Employee', 'active_has_no_end_date', {
-        when: async (ctx) => (await ctx.getProperty('status')) === 'active',
-        then: async (ctx) => {
+      await await om.defineConstraint(runtime, 'Employee', 'active_has_no_end_date', { scope: 'conditional', message: 'end_date must be empty when status=active' });
+      await om.registerConstraint(runtime, 'Employee', 'active_has_no_end_date', async (ctx) => (await ctx.getProperty('status')) === 'active', async (ctx) => {
           const v = await ctx.getProperty('end_date');
           return v === undefined || v === null || String(v).trim() === '';
-        },
-        message: 'end_date must be empty when status=active',
-      });
+        });
 
       await om.createEntity(db, 'emp:3', 'Employee', 'Carol');
-      await om.setProperty(db, 'emp:3', 'status', 'active');
+      await om.setProperty(runtime, 'emp:3', 'status', 'active');
 
       await expect(
-        om.setProperty(db, 'emp:3', 'end_date', '2026-12-31')
+        om.setProperty(runtime, 'emp:3', 'end_date', '2026-12-31')
       ).rejects.toThrow(/active_has_no_end_date|end_date must be empty/i);
 
-      expect(await om.getProperty(db, 'emp:3', 'end_date')).toBeUndefined();
+      expect(await om.getProperty(runtime, 'emp:3', 'end_date')).toBeUndefined();
 
-      await om.setProperty(db, 'emp:3', 'end_date', '2026-12-31', { skipConstraints: true });
-      expect(await om.getProperty(db, 'emp:3', 'end_date')).toBe('2026-12-31');
+      await om.setProperty(runtime, 'emp:3', 'end_date', '2026-12-31', { skipConstraints: true });
+      expect(await om.getProperty(runtime, 'emp:3', 'end_date')).toBe('2026-12-31');
     } finally {
       db.close();
     }

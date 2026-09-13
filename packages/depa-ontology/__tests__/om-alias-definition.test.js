@@ -4,7 +4,7 @@ const { createTestDb } = require('./helpers');
 
 describe('OM governance API parity: public alias definitions', () => {
   test('defineTypeAlias invalidates a previously cached unresolved name and canonicalizes entity writes', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
 
@@ -20,7 +20,7 @@ describe('OM governance API parity: public alias definitions', () => {
   });
 
   test('defineRelationAlias and defineAttributeAlias author aliases used by object writes', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Department', 'Department');
@@ -34,12 +34,12 @@ describe('OM governance API parity: public alias definitions', () => {
       await om.createEntity(db, 'employee:2', 'Employee', 'Grace');
       await om.createEntity(db, 'department:1', 'Department', 'Research');
 
-      await om.setProperty(db, 'employee:2', 'department', 'Research');
-      await om.linkEntities(db, 'employee:2', 'member_of', 'department:1');
+      await om.setProperty(runtime, 'employee:2', 'department', 'Research');
+      await om.linkEntities(runtime, 'employee:2', 'member_of', 'department:1');
 
       expect(await om.resolveRel(db, 'member_of')).toBe('works_in');
       expect(await om.resolveAttr(db, 'Employee', 'department')).toBe('org_unit');
-      expect(await om.getProperty(db, 'employee:2', 'org_unit')).toBe('Research');
+      expect(await om.getProperty(runtime, 'employee:2', 'org_unit')).toBe('Research');
       expect((await om.getNeighbors(db, 'employee:2', 'works_in')).outgoing.map((item) => item.entityId)).toEqual(['department:1']);
     } finally {
       db.close();
@@ -47,7 +47,7 @@ describe('OM governance API parity: public alias definitions', () => {
   });
 
   test('public alias definitions upsert and preserve resolution-time cycle errors', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Contractor', 'Contractor');
@@ -65,7 +65,7 @@ describe('OM governance API parity: public alias definitions', () => {
   });
 
   test('public alias definitions reject empty names', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await expect(om.defineTypeAlias(db, '', 'Employee')).rejects.toThrow(/alias/i);
       await expect(om.defineRelationAlias(db, 'member_of', '')).rejects.toThrow(/canonical/i);

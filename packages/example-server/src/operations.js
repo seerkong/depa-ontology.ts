@@ -2,13 +2,15 @@
 
 /**
  * OntologyOperation registry + invoke runtime for Workshop API.
- * Aligns with ontology-operation.md v0.2.1 (§2/§5/§8/§10/§14).
+ * Aligns with ontology-operation.md v0.3 (§2/§4.2–4.5/§5/§8/§10/§14).
  *
  * FQN routing: depa-processor DispatchEngine ROUTE_KEY
  * (DispatchStrategyConfig.forRouteKeyStrategy + createRouteKeyDispatchRequest).
  *
  * entry: "effect" | "addressed"
  * addressed invocation: { type, kind?, payload?, metadata? }
+ * v0.3: subjectKind / behaviorKind (incl. "query") / OperationOutcome.kind on results /
+ * structured `issues[]` on rejections — each derived here, not hand-declared twice.
  *
  * Deviation note: CRM also exposes ConvertLead (composite create+link) using
  * converts_to / belongs_to / has_opportunity — object-graph mutation as one facade.
@@ -138,17 +140,6 @@ async function ensureEntityExists(db, entityId, expectedType) {
     return { mismatch: true, view };
   }
   return view;
-}
-
-async function unlinkOutgoing(db, fromId, relName) {
-  const neighbors = await om.getNeighbors(db, fromId, relName, 'outgoing');
-  const outgoing = (neighbors && neighbors.outgoing) || [];
-  const removed = [];
-  for (const n of outgoing) {
-    await om.unlinkEntities(db, fromId, relName, n.entityId);
-    removed.push(n.entityId);
-  }
-  return removed;
 }
 
 function todayIsoDate() {
@@ -512,12 +503,6 @@ async function handleConvertLead(db, selector, invocation) {
       ? String(payload.opportunityId).trim()
       : `opp:${slugify(oppLabel)}-${shortId()}`;
 
-  await om.createEntity(db, oppId, 'Opportunity', oppLabel);
-  await om.setProperty(db, oppId, 'amount', amount);
-  await om.setProperty(db, oppId, 'stage', stage);
-  await om.linkEntities(db, leadId, 'converts_to', oppId, { converted_on: todayIsoDate() });
-  await om.linkEntities(db, leadId, 'belongs_to', accountId, {});
-  await om.linkEntities(db, accountId, 'has_opportunity', oppId, {});
   const productId = payload.productId != null ? String(payload.productId).trim() : '';
   if (productId) {
     const product = await ensureEntityExists(db, productId, 'Product');
@@ -525,9 +510,24 @@ async function handleConvertLead(db, selector, invocation) {
     if (product.mismatch) {
       return reject('TYPE_MISMATCH', `Entity ${productId} is not Product`, { typeName: product.view.typeName });
     }
-    await om.linkEntities(db, oppId, 'for_product', productId, {});
   }
-  await om.setProperty(db, leadId, 'status', 'converted');
+
+  // create + three (or four) edges + status change all land in ONE transaction:
+  // a failure partway leaves no half-converted lead behind.
+  await om.executeMutations(db, leadId, [
+    {
+      mutation: 'createAndLinkOpportunity',
+      params: {
+        leadId,
+        opportunityId: oppId,
+        opportunityLabel: oppLabel,
+        accountId,
+        amount,
+        stage,
+        productId: productId || undefined,
+      },
+    },
+  ]);
 
   return okResult({
     leadId,
@@ -566,9 +566,21 @@ async function handleAssignLead(db, selector, invocation) {
     if (lead.mismatch) {
       return reject('TYPE_MISMATCH', `Entity ${leadId} is not Lead`, { typeName: lead.view.typeName });
     }
-    const unlinked = await unlinkOutgoing(db, leadId, 'assigned_to');
-    await om.linkEntities(db, leadId, 'assigned_to', salesRepId, { assigned_on: todayIsoDate() });
-    assigned.push({ leadId, salesRepId, unlinked });
+    // The intent is "this lead's sales rep is now X" — a functional relation swap,
+    // so the unlink/link shape comes from declared cardinality rather than being
+    // spelled out by hand, and lands in one transaction.
+    const swap = await om.deriveRelationSwap(db, {
+      fromId: leadId,
+      relName: 'assigned_to',
+      toId: salesRepId,
+    });
+    await om.executeMutations(db, leadId, [
+      {
+        mutation: 'swapOwnerRelation',
+        params: { ...swap, props: { assigned_on: todayIsoDate() } },
+      },
+    ]);
+    assigned.push({ leadId, salesRepId, unlinked: swap.unlink });
   }
   return okResult({ assigned });
 }
@@ -596,9 +608,18 @@ async function handleTransferEmployee(db, selector, invocation) {
     if (emp.mismatch) {
       return reject('TYPE_MISMATCH', `Entity ${empId} is not Employee`, { typeName: emp.view.typeName });
     }
-    const unlinked = await unlinkOutgoing(db, empId, 'works_in');
-    await om.linkEntities(db, empId, 'works_in', departmentId, { since: todayIsoDate() });
-    transferred.push({ employeeId: empId, departmentId, unlinked });
+    const swap = await om.deriveRelationSwap(db, {
+      fromId: empId,
+      relName: 'works_in',
+      toId: departmentId,
+    });
+    await om.executeMutations(db, empId, [
+      {
+        mutation: 'swapOwnerRelation',
+        params: { ...swap, props: { since: todayIsoDate() } },
+      },
+    ]);
+    transferred.push({ employeeId: empId, departmentId, unlinked: swap.unlink });
   }
   return okResult({ transferred });
 }
@@ -675,13 +696,132 @@ async function handleCoverOrderWithContract(db, selector, invocation) {
     if (po.mismatch) {
       return reject('TYPE_MISMATCH', `Entity ${poId} is not PurchaseOrder`, { typeName: po.view.typeName });
     }
-    const unlinked = await unlinkOutgoing(db, poId, 'covered_by');
-    await om.linkEntities(db, poId, 'covered_by', contractId, {
-      clause: payload.clause != null ? String(payload.clause) : '主条款',
+    const swap = await om.deriveRelationSwap(db, {
+      fromId: poId,
+      relName: 'covered_by',
+      toId: contractId,
     });
-    covered.push({ purchaseOrderId: poId, contractId, unlinked });
+    await om.executeMutations(db, poId, [
+      {
+        mutation: 'swapOwnerRelation',
+        params: {
+          ...swap,
+          props: { clause: payload.clause != null ? String(payload.clause) : '主条款' },
+        },
+      },
+    ]);
+    covered.push({ purchaseOrderId: poId, contractId, unlinked: swap.unlink });
   }
   return okResult({ covered });
+}
+
+/**
+ * Read-side operations (IR §4.3 behaviorKind: "query").
+ *
+ * Before v0.3 these had no place in the operation surface and would have had to
+ * masquerade as effects. They return graph/tree outcomes (§4.4) and their relation
+ * sets come from the model, not from literals.
+ */
+async function handleImpactAnalysis(db, input) {
+  const rootId = input && input.rootId != null ? String(input.rootId).trim() : '';
+  if (!rootId) return reject('VALIDATION', 'input.rootId is required');
+  const maxDepth = input.maxDepth != null ? Number(input.maxDepth) : 3;
+  if (Number.isNaN(maxDepth)) return reject('VALIDATION', 'input.maxDepth must be a number');
+  const relNames = input.relNames != null
+    ? String(input.relNames).split(',').map((s) => s.trim()).filter(Boolean)
+    : await om.listOwnerRelations(db);
+  const result = await om.impactAnalysis(db, {
+    rootId,
+    relNames,
+    maxDepth,
+    direction: input.direction != null ? String(input.direction) : 'outgoing',
+  });
+  return okResult({ rootId, nodes: result.data.nodes, edges: result.data.edges, stats: result.stats });
+}
+
+async function handleOwnershipTree(db, input) {
+  const rootId = input && input.rootId != null ? String(input.rootId).trim() : '';
+  if (!rootId) return reject('VALIDATION', 'input.rootId is required');
+  const maxDepth = input.maxDepth != null ? Number(input.maxDepth) : 3;
+  if (Number.isNaN(maxDepth)) return reject('VALIDATION', 'input.maxDepth must be a number');
+  const ownerRelNames = input.ownerRelNames != null
+    ? String(input.ownerRelNames).split(',').map((s) => s.trim()).filter(Boolean)
+    : await om.listOwnerRelations(db);
+  const result = await om.ownershipTree(db, { rootId, ownerRelNames, maxDepth });
+  return okResult({ rootId, nodes: result.data.nodes, edges: result.data.edges, stats: result.stats });
+}
+
+/** Query operations are declared per demo with the demo's own root entity. */
+function queryOperationsFor(demoId, defaultRootId) {
+  return [
+    {
+      id: `${demoId}-impact-analysis`,
+      fqn: `ontology.${demoId}.op.ImpactAnalysis`,
+      demoId,
+      label: '影响分析',
+      description: 'Query：按边遍历影响范围（默认关系集来自模型 role）',
+      entry: 'effect',
+      behaviorKind: 'query',
+      outcomeKind: 'graph',
+      ownerType: null,
+      sideEffectLevel: 'read',
+      effectBinding: { kind: 'om', primitive: 'executeMutations', argsMapping: '只读：om.impactAnalysis' },
+      inputSchema: {
+        type: 'object',
+        required: ['rootId'],
+        properties: {
+          rootId: { type: 'string' },
+          relNames: { type: 'string' },
+          maxDepth: { type: 'number' },
+          direction: { type: 'string' },
+        },
+      },
+      examples: [
+        {
+          title: `从 ${defaultRootId} 向外遍历`,
+          request: {
+            fqn: `ontology.${demoId}.op.ImpactAnalysis`,
+            entry: 'effect',
+            input: { rootId: defaultRootId, maxDepth: 3 },
+          },
+        },
+      ],
+      handler: handleImpactAnalysis,
+    },
+    {
+      id: `${demoId}-ownership-tree`,
+      fqn: `ontology.${demoId}.op.OwnershipTree`,
+      demoId,
+      label: '所有权树',
+      description: 'Query：按声明为 ownership 的关系生成树（默认关系集来自模型 role）',
+      entry: 'effect',
+      behaviorKind: 'query',
+      outcomeKind: 'tree',
+      ownerType: null,
+      sideEffectLevel: 'read',
+      effectBinding: { kind: 'om', primitive: 'executeMutations', argsMapping: '只读：om.ownershipTree' },
+      inputSchema: {
+        type: 'object',
+        required: ['rootId'],
+        properties: {
+          rootId: { type: 'string' },
+          ownerRelNames: { type: 'string' },
+          maxDepth: { type: 'number' },
+        },
+      },
+      examples: [
+        {
+          title: `以 ${defaultRootId} 为根的树`,
+          request: {
+            fqn: `ontology.${demoId}.op.OwnershipTree`,
+            entry: 'effect',
+            input: { rootId: defaultRootId, maxDepth: 3 },
+          },
+        },
+      ],
+      handler: handleOwnershipTree,
+    },
+  ];
 }
 
 // ── Registry ────────────────────────────────────────────────────────────────
@@ -960,6 +1100,10 @@ const OPERATIONS = {
       label: '转化线索',
       description: 'Addressed 复合：创建商机并一次挂 converts_to / belongs_to / has_opportunity，线索标 converted',
       entry: 'addressed',
+      behaviorKind: 'composed',
+      // ConvertLead is the one addressed op that genuinely takes exactly one lead:
+      // it creates a 1:1 opportunity and rewrites that lead's status.
+      subjectKind: 'single',
       ownerType: 'Lead',
       expectedInvocationType: 'Lead.convert',
       effectBinding: {
@@ -1050,6 +1194,7 @@ const OPERATIONS = {
       ],
       handler: handleAssignLead,
     },
+    ...queryOperationsFor('crm', 'acct:acme'),
   ],
   hr: [
     {
@@ -1227,6 +1372,7 @@ const OPERATIONS = {
       ],
       handler: handleAssignSkill,
     },
+    ...queryOperationsFor('hr', 'emp:alice'),
   ],
   procurement: [
     {
@@ -1404,8 +1550,75 @@ const OPERATIONS = {
       ],
       handler: handleCoverOrderWithContract,
     },
+    ...queryOperationsFor('procurement', 'po:1001'),
   ],
 };
+
+/**
+ * Derive subjectKind from the declared entry (IR §4.2).
+ *
+ * `entry` stays authoritative for which formula runs. Addressed operations declare
+ * their own subjectKind when it matters (ConvertLead takes exactly one); otherwise
+ * they are reported as "single" but are not restricted, because most addressed
+ * handlers legitimately loop over a selection.
+ */
+function subjectKindOf(op) {
+  const entry = normalizeEntry(op);
+  if (entry === 'effect') return 'none';
+  return op.subjectKind === 'selection' ? 'selection' : 'single';
+}
+
+/** True when the operation explicitly constrains its selector cardinality. */
+function declaresSubjectKind(op) {
+  return op.subjectKind === 'single' || op.subjectKind === 'selection';
+}
+
+/**
+ * Infer the result shape from the declared effectBinding (IR §4.4) when the
+ * operation does not state it. Read-side operations return graph/tree; a composite
+ * facade returns composite.
+ */
+function isQueryOperation(op) {
+  return op.behaviorKind === 'query' || /Analysis|Tree|Hotspot/i.test(String(op.id || ''));
+}
+
+function outcomeKindOf(op) {
+  if (op.outcomeKind) return op.outcomeKind;
+  if (op.behaviorKind === 'query') {
+    if (/Tree/i.test(String(op.id || ''))) return 'tree';
+    if (/Analysis/i.test(String(op.id || '')) || /Hotspot/i.test(String(op.id || ''))) {
+      return /Hotspot/i.test(String(op.id || '')) ? 'table' : 'graph';
+    }
+    return 'collection';
+  }
+  if (op.effectBinding && op.effectBinding.kind === 'composite') return 'composite';
+  return 'entity';
+}
+
+function behaviorKindOf(op) {
+  if (op.behaviorKind) return op.behaviorKind;
+  if (op.effectBinding && op.effectBinding.kind === 'composite') return 'composed';
+  return 'mutation';
+}
+
+/** Core error codes are a closed set (IR §4.5); anything else stays free-form. */
+const CORE_ISSUE_CODES = new Set([
+  'VALIDATION',
+  'ENTITY_NOT_FOUND',
+  'TYPE_MISMATCH',
+  'ENTRY_MISMATCH',
+  'INVALID_INVOCATION',
+  'UNKNOWN_OPERATION',
+]);
+
+/** Build a structured issue for the UI to point at a specific field (IR §4.5). */
+function issue(path, code, message, expected) {
+  return { path, code, message, ...(expected !== undefined ? { expected } : {}) };
+}
+
+function isCoreIssueCode(code) {
+  return CORE_ISSUE_CODES.has(String(code || ''));
+}
 
 function summarizeOperation(op) {
   const entry = normalizeEntry(op);
@@ -1416,6 +1629,10 @@ function summarizeOperation(op) {
     label: op.label,
     description: op.description,
     entry,
+    // v0.3 fields, all derived from declared metadata so no field can go stale.
+    subjectKind: subjectKindOf(op),
+    behaviorKind: behaviorKindOf(op),
+    outcomeKind: outcomeKindOf(op),
     ownerType: op.ownerType,
     sideEffectLevel: op.sideEffectLevel,
     effectBinding: op.effectBinding,
@@ -1429,18 +1646,66 @@ function summarizeOperation(op) {
   return summary;
 }
 
+/**
+ * Attach the outcome kind to a successful result so callers can pick a renderer
+ * without guessing (IR §4.4). The result payload itself is unchanged.
+ */
+function withOutcomeKind(result, op) {
+  if (!result || typeof result !== 'object' || result.ok !== true) return result;
+  return { ...result, outcomeKind: outcomeKindOf(op) };
+}
+
+/**
+ * Attach structured issues to a rejection (IR §4.5). Existing code/message stay
+ * intact so current consumers keep working; issues are additive.
+ */
+function withIssues(rejection, issues) {
+  if (!rejection || !Array.isArray(issues) || !issues.length) return rejection;
+  const rejected = { ...(rejection.rejected || {}) };
+  if (!rejected.issues) rejected.issues = issues;
+  return { ...rejection, rejected };
+}
+
+/**
+ * Enforce the selector shape implied by `subjectKind` (IR §4.2): "single" takes
+ * kind=one, "selection" takes kind=ids. Ops that do not declare a subjectKind keep
+ * accepting either, since resolving that ambiguity is a modelling decision.
+ */
+function validateSelectorAgainstSubjectKind(body, op) {
+  const selector = body && typeof body === 'object' ? body.selector : null;
+  if (!selector || typeof selector !== 'object') return null;
+  // Only enforce what the operation explicitly declares; an undeclared subjectKind is
+  // a derived report, not a constraint (most addressed handlers accept a selection).
+  if (!declaresSubjectKind(op)) return null;
+  const declared = op.subjectKind;
+  const kind = selector.kind;
+  if (declared === 'single' && kind === 'ids') {
+    return withIssues(
+      reject('VALIDATION', "subjectKind 'single' requires selector.kind='one'", {
+        expected: 'one',
+        got: kind,
+      }),
+      [issue('selector.kind', 'VALIDATION', "subjectKind 'single' requires kind='one'", 'one')]
+    );
+  }
+  if (declared === 'selection' && kind === 'one') {
+    return withIssues(
+      reject('VALIDATION', "subjectKind 'selection' requires selector.kind='ids'", {
+        expected: 'ids',
+        got: kind,
+      }),
+      [issue('selector.kind', 'VALIDATION', "subjectKind 'selection' requires kind='ids'", 'ids')]
+    );
+  }
+  return null;
+}
+
 function listOperations(demoId) {
   resolveDemo(demoId);
   const ops = OPERATIONS[demoId] || [];
-  return ops.map((op) => ({
-    id: op.id,
-    fqn: op.fqn,
-    label: op.label,
-    description: op.description,
-    entry: normalizeEntry(op),
-    ownerType: op.ownerType,
-    sideEffectLevel: op.sideEffectLevel,
-  }));
+  // Summarise through the same path as detail: a second hand-listed field set here is
+  // exactly how list and detail drift apart (list previously omitted the v0.3 fields).
+  return ops.map((op) => summarizeOperation(op));
 }
 
 function getOperation(demoId, fqnOrId) {
@@ -1489,7 +1754,7 @@ function buildDispatchHandlerMap() {
     for (const op of ops) {
       const run = async (dispatchInput) => {
         const runtime = (dispatchInput && dispatchInput.runtime) || {};
-        const db = runtime.db;
+        const db = runtime.omRuntime || runtime.db;
         const entry = normalizeEntry(op);
         try {
           if (entry === 'effect') {
@@ -1546,39 +1811,61 @@ async function invokeOperation(demoId, request) {
     const entry = normalizeEntry(op);
     const echo = clientEntryEcho(body);
     if (echo != null && echo !== entry) {
-      return reject('ENTRY_MISMATCH', `Operation entry is '${entry}', got '${echo}'`, {
-        expected: entry,
-        got: echo,
-      });
+      return withIssues(
+        reject('ENTRY_MISMATCH', `Operation entry is '${entry}', got '${echo}'`, {
+          expected: entry,
+          got: echo,
+        }),
+        [issue('entry', 'ENTRY_MISMATCH', `Operation entry is '${entry}'`, entry)]
+      );
     }
+
+    // subjectKind is the declared addressing shape (IR §4.2); enforce the selector
+    // kind the operation declares so "selection" cannot silently receive one id.
+    const selectorErr = validateSelectorAgainstSubjectKind(body, op);
+    if (selectorErr) return selectorErr;
 
     if (entry === 'effect') {
       if (body.selector != null || body.invocation != null) {
-        return reject(
-          'ENTRY_MISMATCH',
-          'effect-entry operations must not include selector or invocation',
+        return withIssues(
+          reject(
+            'ENTRY_MISMATCH',
+            'effect-entry operations must not include selector or invocation',
+          ),
+          [issue('selector', 'ENTRY_MISMATCH', 'effect-entry operations take input only')]
         );
       }
       if (body.input == null || typeof body.input !== 'object' || Array.isArray(body.input)) {
-        return reject('VALIDATION', 'input object is required for effect-entry operations');
+        return withIssues(
+          reject('VALIDATION', 'input object is required for effect-entry operations'),
+          [issue('input', 'VALIDATION', 'input object is required', 'object')]
+        );
       }
     } else if (entry === 'addressed') {
       if (!body.selector) {
-        return reject('VALIDATION', 'selector is required for addressed-entry operations');
+        return withIssues(
+          reject('VALIDATION', 'selector is required for addressed-entry operations'),
+          [issue('selector', 'VALIDATION', 'selector is required', 'object')]
+        );
       }
       if (body.invocation == null) {
-        return reject('VALIDATION', 'invocation envelope is required for addressed-entry operations');
+        return withIssues(
+          reject('VALIDATION', 'invocation envelope is required for addressed-entry operations'),
+          [issue('invocation', 'VALIDATION', 'invocation envelope is required', 'object')]
+        );
       }
       const invErr = validateInvocationEnvelope(body.invocation, op.expectedInvocationType || null);
       if (invErr) return invErr;
     }
   }
 
-  const { db } = await getWorkshopDb(demoId);
+  const { db, runtime: omRuntime } = await getWorkshopDb(demoId);
   const routeKey = op ? op.fqn : String(fqnOrId);
   const dispatchInput = {
     demoId,
-    runtime: { db, demoId, om },
+    // Handlers receive the om runtime, not a bare db: behaviors, constraint checks and
+    // composed writes all resolve through it.
+    runtime: { db, demoId, om, omRuntime },
     input: body.input,
     selector: body.selector,
     invocation: body.invocation,
@@ -1592,10 +1879,13 @@ async function invokeOperation(demoId, request) {
   );
 
   if (!dispatchResult.isHandled()) {
-    return reject('UNKNOWN_OPERATION', `Unknown operation: ${fqnOrId}`, { fqn: fqnOrId });
+    return withIssues(
+      reject('UNKNOWN_OPERATION', `Unknown operation: ${fqnOrId}`, { fqn: fqnOrId }),
+      [issue('fqn', 'UNKNOWN_OPERATION', `Unknown operation: ${fqnOrId}`)]
+    );
   }
 
-  return dispatchResult.getResult();
+  return withOutcomeKind(dispatchResult.getResult(), op);
 }
 
 module.exports = {
@@ -1606,4 +1896,10 @@ module.exports = {
   normalizeEntry,
   validateInvocationEnvelope,
   invokeDispatchEngine,
+  // v0.3 contract helpers, exported so tests can assert each field has a consumer.
+  subjectKindOf,
+  behaviorKindOf,
+  outcomeKindOf,
+  isCoreIssueCode,
+  CORE_ISSUE_CODES,
 };

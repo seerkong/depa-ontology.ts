@@ -3,7 +3,7 @@ const { createTestDb } = require('./helpers');
 
 describe('attribute inheritance', () => {
   test('getAttributeDefinitions includes inherited attrs from parent', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
@@ -23,7 +23,7 @@ describe('attribute inheritance', () => {
   });
 
   test('child can tighten optional attr to required', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
@@ -41,7 +41,7 @@ describe('attribute inheritance', () => {
   });
 
   test('child cannot loosen inherited required true to false', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
@@ -56,7 +56,7 @@ describe('attribute inheritance', () => {
   });
 
   test('child cannot change inherited value_type', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true);
@@ -71,7 +71,7 @@ describe('attribute inheritance', () => {
   });
 
   test('mixin precedence: ancestor overrides mixin for same attr', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       // Mixin defines created_by as optional
       await om.defineMixin(db, 'Auditable', 'Auditable mixin');
@@ -96,7 +96,7 @@ describe('attribute inheritance', () => {
   });
 
   test('child cannot loosen inherited required=true even when mixin defines it as optional', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineMixin(db, 'Auditable', 'Auditable mixin');
       await om.defineAttribute(db, 'Auditable', 'created_by', 'String', false);

@@ -1,7 +1,7 @@
 const { describe, expect, test } = require('bun:test');
 const { createTestDb } = require('./helpers');
 
-async function seedCrmLikeOntology(db, om) {
+async function seedCrmLikeOntology(db, runtime, om) {
   await om.defineType(db, 'Account', '客户公司 / 账户');
   await om.defineType(db, 'Contact', '客户联系人');
   await om.defineType(db, 'Lead', '销售线索');
@@ -35,7 +35,7 @@ async function seedCrmLikeOntology(db, om) {
   await om.defineRelation(db, 'assigned_to', 'Lead', 'SalesRep', true);
   await om.defineRelation(db, 'converts_to', 'Lead', 'Opportunity', true);
 
-  await om.ingestBatch(db, {
+  await om.ingestBatch(runtime, {
     entities: [
       { id: 'lead:a', typeName: 'Lead', label: 'L1' },
       { id: 'lead:b', typeName: 'Lead', label: 'L2' },
@@ -58,11 +58,11 @@ async function seedCrmLikeOntology(db, om) {
 
 describe('exportOntologyProjection', () => {
   test('exports CRM-like projection with statusLike and optional enumHints', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       expect(typeof om.exportOntologyProjection).toBe('function');
 
-      await seedCrmLikeOntology(db, om);
+      await seedCrmLikeOntology(db, runtime, om);
 
       const withoutHints = await om.exportOntologyProjection(db, { name: 'crm' });
       expect(withoutHints.meta.source).toBe('depa-ontology');

@@ -50,16 +50,16 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'Product', 'list_price', 'Number', true, '标价');
   await om.defineAttribute(db, 'Product', 'category', 'String', false, '品类');
 
-  await om.defineRelation(db, 'has_contact', 'Account', 'Contact', true, '拥有联系人');
-  await om.defineRelation(db, 'has_opportunity', 'Account', 'Opportunity', true, '拥有商机');
-  await om.defineRelation(db, 'owned_by', 'Opportunity', 'SalesRep', true, '归属销售');
-  await om.defineRelation(db, 'has_activity', 'Opportunity', 'Activity', true, '包含活动');
-  await om.defineRelation(db, 'assigned_to', 'Lead', 'SalesRep', true, '分配给');
-  await om.defineRelation(db, 'converts_to', 'Lead', 'Opportunity', true, '转化为');
-  await om.defineRelation(db, 'belongs_to', 'Lead', 'Account', true, '归属客户');
-  await om.defineRelation(db, 'parent_account', 'Account', 'Account', true, '上级客户');
-  await om.defineRelation(db, 'generated_from', 'Lead', 'Campaign', true, '来自战役');
-  await om.defineRelation(db, 'for_product', 'Opportunity', 'Product', true, '对应产品');
+  await om.defineRelation(db, 'has_contact', 'Account', 'Contact', true, '拥有联系人', { cardinality: 'one_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'has_opportunity', 'Account', 'Opportunity', true, '拥有商机', { cardinality: 'one_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'owned_by', 'Opportunity', 'SalesRep', true, '归属销售', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'has_activity', 'Opportunity', 'Activity', true, '包含活动', { cardinality: 'one_to_many', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'assigned_to', 'Lead', 'SalesRep', true, '分配给', { cardinality: 'many_to_one', optional: false, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'converts_to', 'Lead', 'Opportunity', true, '转化为', { cardinality: 'one_to_one', optional: false, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'belongs_to', 'Lead', 'Account', true, '归属客户', { cardinality: 'many_to_one', optional: false, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'parent_account', 'Account', 'Account', true, '上级客户', { cardinality: 'many_to_one', optional: false, role: 'ownership', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'generated_from', 'Lead', 'Campaign', true, '来自战役', { cardinality: 'many_to_one', optional: true, role: 'association', on_delete: 'retract_edges' });
+  await om.defineRelation(db, 'for_product', 'Opportunity', 'Product', true, '对应产品', { cardinality: 'many_to_many', optional: true, role: 'association', on_delete: 'retract_edges' });
 }
 
 const defaultSheets = {
@@ -287,7 +287,7 @@ const queries = [
     dsl: `// DSL v2：高金额商机（amount>60000 且排除失败）\nconst q = dsl.query()\n  .select(['id', 'label', 'amount', 'stage'])\n  .fromStored('om_entity', {\n    id: dsl.var('id'),\n    type_name: dsl.param('type', 'Opportunity'),\n    label: dsl.var('label'),\n  })\n  .fromStored('om_property', {\n    entity_id: dsl.var('id'),\n    attr_name: dsl.param('amount_attr', 'amount'),\n    value: dsl.var('amount'),\n  })\n  .fromStored('om_property', {\n    entity_id: dsl.var('id'),\n    attr_name: dsl.param('stage_attr', 'stage'),\n    value: dsl.var('stage'),\n  })\n  .where(dsl.and(\n    dsl.gt(dsl.var('amount'), dsl.param('min_amount', 60000)),\n    dsl.not(dsl.eq(dsl.var('stage'), dsl.param('exclude', 'closed_lost'))),\n  ))\n  .order('amount')\n  .build();`,
     defaultView: 'table',
     kind: 'dsl',
-    run: async (db) => {
+    run: async (runtime) => {
       const q = dsl.query()
         .select(['id', 'label', 'amount', 'stage'])
         .fromStored('om_entity', {
@@ -323,13 +323,13 @@ const queries = [
     queryId: 'impactAnalysis',
     label: '客户影响分析',
     meaning: '从先达客户出发追踪商机、负责人、活动与联系人',
-    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(db, {\n  rootId: 'acct:acme',\n  relNames: ['has_opportunity', 'owned_by', 'has_activity', 'has_contact'],\n  maxDepth: 3,\n  direction: 'outgoing',\n});`,
+    dsl: `// Template：影响分析（图）\nawait om.impactAnalysis(runtime, {\n  rootId: 'acct:acme',\n  relNames: await om.listOwnerRelations(runtime),\n  maxDepth: 3,\n  direction: 'outgoing',\n});`,
     defaultView: 'graph',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.impactAnalysis(db, {
+    run: async (runtime) => {
+      const result = await om.impactAnalysis(runtime, {
         rootId: 'acct:acme',
-        relNames: ['has_opportunity', 'owned_by', 'has_activity', 'has_contact', 'parent_account', 'for_product'],
+        relNames: await om.listOwnerRelations(runtime),
         maxDepth: 3,
         direction: 'outgoing',
       });
@@ -340,13 +340,13 @@ const queries = [
     queryId: 'ownershipTree',
     label: '客户所有权树',
     meaning: '先达客户 → 商机 → 活动 / 负责人',
-    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(db, {\n  rootId: 'acct:acme',\n  ownerRelNames: ['has_contact', 'has_opportunity', 'owned_by', 'has_activity'],\n  maxDepth: 3,\n});`,
+    dsl: `// Template：所有权树（树）\nawait om.ownershipTree(runtime, {\n  rootId: 'acct:acme',\n  ownerRelNames: await om.listOwnerRelations(runtime),\n  maxDepth: 3,\n});`,
     defaultView: 'tree',
     kind: 'template',
-    run: async (db) => {
-      const result = await om.ownershipTree(db, {
+    run: async (runtime) => {
+      const result = await om.ownershipTree(runtime, {
         rootId: 'acct:acme',
-        ownerRelNames: ['has_contact', 'has_opportunity', 'owned_by', 'has_activity', 'for_product'],
+        ownerRelNames: await om.listOwnerRelations(runtime),
         maxDepth: 3,
       });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };
@@ -359,7 +359,7 @@ const queries = [
     dsl: `// Template：风险热点（榜单/表格）\nawait om.riskHotspot(db, {\n  typeName: 'Opportunity',\n  riskAttr: 'amount',\n  topK: 5,\n  minScore: 0,\n  degreeWeight: 1000,\n});`,
     defaultView: 'table',
     kind: 'template',
-    run: async (db) => {
+    run: async (runtime) => {
       const result = await om.riskHotspot(db, {
         typeName: 'Opportunity',
         riskAttr: 'amount',

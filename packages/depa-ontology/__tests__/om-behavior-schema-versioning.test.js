@@ -306,33 +306,36 @@ async function replaceBehaviorSnapshotRows(db, behavior) {
 
 async function defineMigrationBehaviorFixture(runtime, om) {
   await om.defineType(runtime, 'MigrationBehaviorOwner', 'Migration behavior owner');
-  await om.defineConstraint(runtime, 'MigrationBehaviorOwner', 'requires_code', {
-    scope: 'custom',
-    message: 'code required',
-    validator: () => null,
-  });
-  await om.defineComputed(
+  await await om.defineConstraint(runtime, 'MigrationBehaviorOwner', 'requires_code', { scope: 'custom', message: 'code required' });
+  await om.registerValidator(runtime, 'MigrationBehaviorOwner', 'requires_code', () => null);
+  await om.registerComputed(
     runtime,
     'MigrationBehaviorOwner',
     'score',
-    () => 1,
-    'score computed'
+    () => 1
   );
-  await om.defineAction(
+  await om.defineComputed(runtime,
+    'MigrationBehaviorOwner',
+    'score', 'score computed');
+  await om.registerAction(
     runtime,
     'MigrationBehaviorOwner',
     'activate',
-    () => [],
-    'activate action'
+    () => []
   );
-  await om.defineMutation(
+  await om.defineAction(runtime,
+    'MigrationBehaviorOwner',
+    'activate', 'activate action');
+  await om.registerMutation(
     runtime,
     'MigrationBehaviorOwner',
     'touch',
-    () => {},
-    'touch mutation'
+    () => {}
   );
-  await om.addInterceptor(
+  await om.defineMutation(runtime,
+    'MigrationBehaviorOwner',
+    'touch', 'touch mutation');
+  await om.defineInterceptor(
     runtime,
     'MigrationBehaviorOwner',
     'activate',
@@ -344,15 +347,24 @@ async function defineMigrationBehaviorFixture(runtime, om) {
 
 async function defineRollbackBehaviorFixture(db, runtime, om, owner = 'RollbackBehaviorOwner') {
   await om.defineType(runtime, owner, `${owner} type`);
-  await om.defineConstraint(runtime, owner, 'guard', {
-    scope: 'custom',
-    message: 'v1 guard',
-    validator: () => null,
-  });
-  await om.defineComputed(runtime, owner, 'score', () => 1, 'v1 score');
-  await om.defineAction(runtime, owner, 'approve', () => [], 'v1 approve');
-  await om.defineMutation(runtime, owner, 'touch', () => {}, 'v1 touch');
-  await om.addInterceptor(runtime, owner, 'approve', 'after', () => {}, 'v1 after approve');
+  await await om.defineConstraint(runtime, owner, 'guard', { scope: 'custom', message: 'v1 guard' });
+  await om.registerValidator(runtime, owner, 'guard', () => null);
+  await om.registerComputed(
+    runtime, owner, 'score',
+    () => 1
+  );
+  await om.defineComputed(runtime, owner, 'score', 'v1 score');
+  await om.registerAction(
+    runtime, owner, 'approve',
+    () => []
+  );
+  await om.defineAction(runtime, owner, 'approve', 'v1 approve');
+  await om.registerMutation(
+    runtime, owner, 'touch',
+    () => {}
+  );
+  await om.defineMutation(runtime, owner, 'touch', 'v1 touch');
+  await om.defineInterceptor(runtime, owner, 'approve', 'after', () => {}, 'v1 after approve');
 
   await putBinding(db, {
     kind: 'constraint',
@@ -433,8 +445,8 @@ function expectActionReady(catalog, ownerType, actionName, bindingId) {
   ]);
 }
 
-async function applyRollbackVersionBump(db, om, migrationId, typeName) {
-  await om.applySchemaMigration(db, {
+async function applyRollbackVersionBump(db, runtime, om, migrationId, typeName) {
+  await om.applySchemaMigration(runtime, {
     migrationId,
     fromVersion: 1,
     toVersion: 2,
@@ -452,14 +464,14 @@ async function applyRollbackVersionBump(db, om, migrationId, typeName) {
 async function prepareRollbackFailureProbe(db, om, runtime, owner, suffix) {
   await defineRollbackBehaviorFixture(db, runtime, om, owner);
   await om.defineType(db, `RollbackFailureCacheV1${suffix}`, `cache v1 ${suffix}`);
-  const target = await om.writeSchemaSnapshot(db, 1, {
+  const target = await om.writeSchemaSnapshot(runtime, 1, {
     createdAt: `2026-07-18T04:3${suffix.length % 10}:00.000Z`,
     label: `rollback failure target ${suffix}`,
   });
 
   const currentOnlyType = `RollbackFailureCurrentOnly${suffix}`;
   await applyRollbackVersionBump(
-    db,
+    db, runtime,
     om,
     `behavior-rollback-failure-${suffix}`,
     currentOnlyType
@@ -633,7 +645,7 @@ function actionOnlyBehavior(owner, prefix) {
   });
 }
 
-async function prepareRollbackGateProbe(om, db, owner, migrationId, currentPrefix) {
+async function prepareRollbackGateProbe(om, db, runtime, owner, migrationId, currentPrefix) {
   await om.defineType(db, owner, `${owner} type`);
   await putActionDefinition(db, owner, 'approve', 'v1 approve');
   await putBinding(db, {
@@ -644,12 +656,12 @@ async function prepareRollbackGateProbe(om, db, owner, migrationId, currentPrefi
     bindingId: 'v1:approve:handler',
   });
   await om.createEntity(db, `${owner}:1`, owner, `${owner} entity`);
-  const target = await om.writeSchemaSnapshot(db, 1, {
+  const target = await om.writeSchemaSnapshot(runtime, 1, {
     createdAt: '2026-07-18T05:00:00.000Z',
     label: `${owner} rollback gate target`,
   });
   await applyRollbackVersionBump(
-    db,
+    db, runtime,
     om,
     migrationId,
     `${owner}CurrentOnlyType`
@@ -663,21 +675,21 @@ async function prepareRollbackConstraintProbe(om, runtime, owner) {
   await om.createEntity(runtime, `${owner}:1`, owner, `${owner} entity`);
 }
 
-async function materializeRollbackConstraintTarget(om, db, owner, migrationId) {
-  await om.writeSchemaSnapshot(db, 1, {
+async function materializeRollbackConstraintTarget(om, db, runtime, owner, migrationId) {
+  await om.writeSchemaSnapshot(runtime, 1, {
     createdAt: '2026-07-18T05:30:00.000Z',
     label: `${owner} rollback constraint target`,
   });
   await applyRollbackVersionBump(
-    db,
+    db, runtime,
     om,
     migrationId,
     `${owner}CurrentOnlyType`
   );
 }
 
-async function diffStoredBehaviorSnapshots(db, om, fromBehavior, toBehavior, options = {}) {
-  const base = await om.writeSchemaSnapshot(db, 1, {
+async function diffStoredBehaviorSnapshots(db, runtime, om, fromBehavior, toBehavior, options = {}) {
+  const base = await om.writeSchemaSnapshot(runtime, 1, {
     createdAt: '2026-07-18T00:00:00.000Z',
   });
   const fromSnapshot = cloneJson(base);
@@ -724,10 +736,10 @@ function requireBehaviorDiff(diff) {
 
 describe('OM behavior schema versioning snapshot contract', () => {
   test('writes an explicit empty Behavior Snapshot V1 section', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
-      const snapshot = await om.writeSchemaSnapshot(db, 1, {
+      const snapshot = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T00:00:00.000Z',
       });
 
@@ -747,77 +759,81 @@ describe('OM behavior schema versioning snapshot contract', () => {
       ]);
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 
   test('captures deterministic definitions and binding identities without runtime payloads', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const unicodeOwner = 'Owner\u4E2D\u6587\u{1F600}';
 
     try {
       await om.defineType(runtime, 'ZuluOwner', 'Zulu owner');
       await om.defineType(runtime, unicodeOwner, 'Owner metadata \u03A9 \u{1F600}');
 
-      await om.defineConstraint(runtime, 'ZuluOwner', 'custom_rule', {
-        scope: 'custom',
-        message: 'custom \u03A9',
-        validator: () => null,
-      });
-      await om.defineConstraint(runtime, unicodeOwner, 'conditional_rule', {
-        scope: 'conditional',
-        message: '\u9700\u68C0\u67E5 "\u6765\u6E90" \u{1F600}',
-        when: () => true,
-        then: () => true,
-      });
+      await await om.defineConstraint(runtime, 'ZuluOwner', 'custom_rule', { scope: 'custom', message: 'custom \u03A9' });
+      await om.registerValidator(runtime, 'ZuluOwner', 'custom_rule', () => null);
+      await await om.defineConstraint(runtime, unicodeOwner, 'conditional_rule', { scope: 'conditional', message: '\u9700\u68C0\u67E5 "\u6765\u6E90" \u{1F600}' });
+      await om.registerConstraint(runtime, unicodeOwner, 'conditional_rule', () => true, () => true);
 
-      await om.defineComputed(
+      await om.registerComputed(
         runtime,
         'ZuluOwner',
         'rank',
-        () => 2,
-        'Zulu rank'
+        () => 2
       );
-      await om.defineComputed(
+      await om.defineComputed(runtime,
+        'ZuluOwner',
+        'rank', 'Zulu rank');
+      await om.registerComputed(
         runtime,
         unicodeOwner,
         'score',
-        () => 1,
-        '\u8BA1\u7B97\t\u503C \u{1F600}'
+        () => 1
       );
+      await om.defineComputed(runtime,
+        unicodeOwner,
+        'score', '\u8BA1\u7B97\t\u503C \u{1F600}');
 
-      await om.defineAction(
+      await om.registerAction(
         runtime,
         'ZuluOwner',
         'archive',
-        () => [],
-        'Zulu archive'
+        () => []
       );
-      await om.defineAction(
+      await om.defineAction(runtime,
+        'ZuluOwner',
+        'archive', 'Zulu archive');
+      await om.registerAction(
         runtime,
         unicodeOwner,
         'deploy',
-        () => [],
-        '\u90E8\u7F72 \u{1F600}'
+        () => []
       );
+      await om.defineAction(runtime,
+        unicodeOwner,
+        'deploy', '\u90E8\u7F72 \u{1F600}');
 
-      await om.defineMutation(
+      await om.registerMutation(
         runtime,
         'ZuluOwner',
         'purge',
-        () => {},
-        'Zulu purge'
+        () => {}
       );
-      await om.defineMutation(
+      await om.defineMutation(runtime,
+        'ZuluOwner',
+        'purge', 'Zulu purge');
+      await om.registerMutation(
         runtime,
         unicodeOwner,
         'persist',
-        () => {},
-        '\u4FDD\u5B58 \u{1F600}'
+        () => {}
       );
+      await om.defineMutation(runtime,
+        unicodeOwner,
+        'persist', '\u4FDD\u5B58 \u{1F600}');
 
-      await om.addInterceptor(
+      await om.defineInterceptor(
         runtime,
         'ZuluOwner',
         'archive',
@@ -825,7 +841,7 @@ describe('OM behavior schema versioning snapshot contract', () => {
         () => {},
         'Zulu before'
       );
-      await om.addInterceptor(
+      await om.defineInterceptor(
         runtime,
         unicodeOwner,
         'deploy',
@@ -996,7 +1012,7 @@ describe('OM behavior schema versioning snapshot contract', () => {
 
 describe('OM behavior schema versioning deterministic diff contract', () => {
   test('diffs add, remove, and metadata or binding identity updates across all six relations', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
       const fromBehavior = behaviorSnapshot({
@@ -1053,7 +1069,7 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       });
 
       const diff = await diffStoredBehaviorSnapshots(
-        db,
+        db, runtime,
         om,
         fromBehavior,
         toBehavior
@@ -1304,16 +1320,16 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       expect(Object.keys(behavior.relations)).toEqual(BEHAVIOR_RELATIONS);
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 
   test('sorts shuffled relation changes by ordinal tuple keys and numeric seq', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
       const diff = await diffStoredBehaviorSnapshots(
-        db,
+        db, runtime,
         om,
         behaviorSnapshot(),
         behaviorSnapshot({
@@ -1353,16 +1369,16 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       ).toEqual([2, 10]);
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 
   test('reports duplicate keys and invalid row shapes with stable structured diagnostics', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
       const diff = await diffStoredBehaviorSnapshots(
-        db,
+        db, runtime,
         om,
         behaviorSnapshot({
           om_action_def: [
@@ -1409,16 +1425,16 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       });
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 
   test('keeps behavior unknown when either stored snapshot is legacy missing', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
       const missingFrom = await diffStoredBehaviorSnapshots(
-        db,
+        db, runtime,
         om,
         undefined,
         behaviorSnapshot()
@@ -1440,7 +1456,7 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       });
 
       const missingTo = await diffStoredBehaviorSnapshots(
-        db,
+        db, runtime,
         om,
         behaviorSnapshot(),
         undefined
@@ -1462,18 +1478,17 @@ describe('OM behavior schema versioning deterministic diff contract', () => {
       });
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 });
 
 describe('OM behavior schema versioning migration snapshot contract', () => {
   test('materializes missing source and target snapshots with non-empty behavior at their transaction points', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
 
     try {
-      expect(await om.readSchemaSnapshot(db, 1)).toBe(null);
+      expect(await om.readSchemaSnapshot(runtime, 1)).toBe(null);
 
       await defineMigrationBehaviorFixture(runtime, om);
       await putBinding(db, {
@@ -1491,7 +1506,7 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         bindingId: 'migration:action:handler',
       });
 
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'behavior-migration-nonempty',
         fromVersion: 1,
         toVersion: 2,
@@ -1505,8 +1520,8 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         ],
       });
 
-      const source = await om.readSchemaSnapshot(db, 1);
-      const target = await om.readSchemaSnapshot(db, 2);
+      const source = await om.readSchemaSnapshot(runtime, 1);
+      const target = await om.readSchemaSnapshot(runtime, 2);
 
       expect(source.behavior).toHaveProperty('formatVersion', 1);
       expect(target.behavior).toHaveProperty('formatVersion', 1);
@@ -1534,10 +1549,10 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
   });
 
   test('materializes explicit empty behavior sections for both migration snapshots', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
 
     try {
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'behavior-migration-empty',
         fromVersion: 1,
         toVersion: 2,
@@ -1551,8 +1566,8 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         ],
       });
 
-      const source = await om.readSchemaSnapshot(db, 1);
-      const target = await om.readSchemaSnapshot(db, 2);
+      const source = await om.readSchemaSnapshot(runtime, 1);
+      const target = await om.readSchemaSnapshot(runtime, 2);
 
       expect(source.behavior).toEqual(behaviorSnapshot());
       expect(target.behavior).toEqual(behaviorSnapshot());
@@ -1569,13 +1584,12 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
       expect(targetChecksum).not.toBe(schemaChecksum(withoutBehavior));
     } finally {
       db.close();
-      await om.clearRegistry();
+      await om.clearRegistry(runtime);
     }
   });
 
   test('does not backfill an existing legacy source snapshot while hashing the behavior-aware target exactly', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
 
     try {
       await defineMigrationBehaviorFixture(runtime, om);
@@ -1587,7 +1601,7 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         bindingId: 'legacy-source:constraint:validator',
       });
 
-      const behaviorAwareSource = await om.writeSchemaSnapshot(db, 1, {
+      const behaviorAwareSource = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T00:00:00.000Z',
         label: 'legacy source fixture',
       });
@@ -1596,9 +1610,9 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
       const legacySource = cloneJson(behaviorAwareSource);
       delete legacySource.behavior;
       await putStoredSnapshot(db, legacySource);
-      expect(await om.readSchemaSnapshot(db, 1)).toEqual(legacySource);
+      expect(await om.readSchemaSnapshot(runtime, 1)).toEqual(legacySource);
 
-      await om.applySchemaMigration(db, {
+      await om.applySchemaMigration(runtime, {
         migrationId: 'behavior-migration-preserves-legacy-source',
         fromVersion: 1,
         toVersion: 2,
@@ -1612,8 +1626,8 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         ],
       });
 
-      const source = await om.readSchemaSnapshot(db, 1);
-      const target = await om.readSchemaSnapshot(db, 2);
+      const source = await om.readSchemaSnapshot(runtime, 1);
+      const target = await om.readSchemaSnapshot(runtime, 2);
 
       expect(source).toEqual(legacySource);
       expect(source).not.toHaveProperty('behavior');
@@ -1633,8 +1647,7 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
   });
 
   test('step failure rolls back materialized snapshots, state, log, and behavior facts', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
 
     try {
       await defineMigrationBehaviorFixture(runtime, om);
@@ -1651,10 +1664,10 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         beforeBehaviorRows[relation] = await readBehaviorRelationRows(db, relation);
       }
       const state0 = await om.getSchemaState(db);
-      expect(await om.readSchemaSnapshot(db, 1)).toBe(null);
+      expect(await om.readSchemaSnapshot(runtime, 1)).toBe(null);
 
       await expect(
-        om.applySchemaMigration(db, {
+        om.applySchemaMigration(runtime, {
           migrationId: 'behavior-migration-fails',
           fromVersion: 1,
           toVersion: 2,
@@ -1669,8 +1682,8 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
         })
       ).rejects.toThrow(/unsupported\s+migration\s+step/i);
 
-      expect(await om.readSchemaSnapshot(db, 1)).toBe(null);
-      expect(await om.readSchemaSnapshot(db, 2)).toBe(null);
+      expect(await om.readSchemaSnapshot(runtime, 1)).toBe(null);
+      expect(await om.readSchemaSnapshot(runtime, 2)).toBe(null);
       expect(await readStoredMigrationStatus(db, 'behavior-migration-fails')).toBe(null);
       expect(await typeExists(db, 'RolledBackMigrationType')).toBe(false);
       expect(await om.getSchemaState(db)).toEqual(state0);
@@ -1689,13 +1702,12 @@ describe('OM behavior schema versioning migration snapshot contract', () => {
 
 describe('OM behavior schema versioning rollback contract', () => {
   test('restores a target snapshot with non-empty behavior across all six persistent relations', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackBehaviorOwner';
 
     try {
       await defineRollbackBehaviorFixture(db, runtime, om, owner);
-      const target = await om.writeSchemaSnapshot(db, 1, {
+      const target = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T04:00:00.000Z',
         label: 'rollback behavior v1',
       });
@@ -1703,7 +1715,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       expect(behaviorRowsTotal(target.behavior)).toBeGreaterThan(0);
 
       await applyRollbackVersionBump(
-        db,
+        db, runtime,
         om,
         'behavior-rollback-present',
         'RollbackCurrentOnlyType'
@@ -1712,7 +1724,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       await replaceBehaviorSnapshotRows(db, currentBehavior);
       expect(await readBehaviorSnapshotRows(db)).toEqual(currentBehavior);
 
-      const result = await om.rollbackSchema(db, 1);
+      const result = await om.rollbackSchema(runtime, 1);
 
       expect(await readBehaviorSnapshotRows(db)).toEqual(target.behavior);
       expect(await typeExists(db, 'RollbackCurrentOnlyType')).toBe(false);
@@ -1736,20 +1748,19 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('restores an explicit empty behavior section, ignores legacy policy, and preserves runtime callbacks', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackEmptyOwner';
 
     try {
       await om.defineType(runtime, owner, 'owner whose target behavior is empty');
-      const target = await om.writeSchemaSnapshot(db, 1, {
+      const target = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T04:05:00.000Z',
         label: 'rollback empty behavior v1',
       });
       expect(target.behavior).toEqual(behaviorSnapshot());
 
       await applyRollbackVersionBump(
-        db,
+        db, runtime,
         om,
         'behavior-rollback-empty',
         'RollbackEmptyCurrentOnlyType'
@@ -1770,7 +1781,7 @@ describe('OM behavior schema versioning rollback contract', () => {
         'empty-current:approve:handler'
       );
 
-      const result = await om.rollbackSchema(db, 1, {
+      const result = await om.rollbackSchema(runtime, 1, {
         legacyBehaviorPolicy: 'clear',
       });
 
@@ -1806,8 +1817,7 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('keeps same-version rollback as a no-op even when a legacy behavior policy is supplied', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackNoOpOwner';
     const bindingId = 'same-version:approve:handler';
 
@@ -1823,7 +1833,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       });
       om.registerAction(runtime, owner, 'approve', bindingId, () => []);
 
-      const currentSnapshot = await om.writeSchemaSnapshot(db, 1, {
+      const currentSnapshot = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T04:07:00.000Z',
         label: 'same-version no-op behavior v1',
       });
@@ -1856,14 +1866,13 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('rejects a legacy missing behavior section by default with zero persistent, runtime, state, and cache effects', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackLegacyDefaultOwner';
 
     try {
       await om.defineType(runtime, owner, 'legacy default owner');
       await om.defineType(db, 'CacheCanonicalV1', 'cache target in v1');
-      const target = await om.writeSchemaSnapshot(db, 1, {
+      const target = await om.writeSchemaSnapshot(runtime, 1, {
         createdAt: '2026-07-18T04:10:00.000Z',
         label: 'legacy behavior missing v1',
       });
@@ -1872,7 +1881,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       await putStoredSnapshot(db, legacyTarget);
 
       await applyRollbackVersionBump(
-        db,
+        db, runtime,
         om,
         'behavior-rollback-legacy-default',
         'LegacyDefaultCurrentOnlyType'
@@ -1894,7 +1903,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       const behaviorBefore = await readBehaviorSnapshotRows(db);
       const catalogBefore = cloneJson(await om.getBehaviorCatalog(runtime));
 
-      const result = await om.rollbackSchema(db, 1);
+      const result = await om.rollbackSchema(runtime, 1);
 
       expect(result).toMatchObject({
         ok: false,
@@ -1926,13 +1935,12 @@ describe('OM behavior schema versioning rollback contract', () => {
 
   test('applies explicit legacy preserve and clear policies with effective checksums and unchanged runtime registry', async () => {
     async function runPolicyCase(policy) {
-      const { db, om } = await createTestDb();
-      const runtime = om.createOmRuntime(db);
+      const { db, om , runtime } = await createTestDb();
       const owner = `RollbackLegacy${policy}Owner`;
 
       try {
         await om.defineType(runtime, owner, `${policy} policy owner`);
-        const target = await om.writeSchemaSnapshot(db, 1, {
+        const target = await om.writeSchemaSnapshot(runtime, 1, {
           createdAt: `2026-07-18T04:${policy === 'preserve' ? '15' : '20'}:00.000Z`,
           label: `legacy ${policy} behavior missing v1`,
         });
@@ -1941,7 +1949,7 @@ describe('OM behavior schema versioning rollback contract', () => {
         await putStoredSnapshot(db, legacyTarget);
 
         await applyRollbackVersionBump(
-          db,
+          db, runtime,
           om,
           `behavior-rollback-legacy-${policy}`,
           `Legacy${policy}CurrentOnlyType`
@@ -1962,7 +1970,7 @@ describe('OM behavior schema versioning rollback contract', () => {
           `${policy}-current:approve:handler`
         );
 
-        const result = await om.rollbackSchema(db, 1, {
+        const result = await om.rollbackSchema(runtime, 1, {
           legacyBehaviorPolicy: policy,
         });
 
@@ -2025,8 +2033,7 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('keeps rollback atomic when a behavior relation replace fails after partial restore work', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackFailureRelationOwner';
     const attemptedReplaces = [];
     const marker = 'injected behavior relation replace failure';
@@ -2050,7 +2057,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       });
       const before = await captureRollbackFailurePrestate(db, om, runtime, wrapped, probe);
 
-      const error = await captureRejected(om.rollbackSchema(wrapped, 1));
+      const error = await captureRejected(om.rollbackSchema(om.createOmRuntime(wrapped), 1));
 
       expect(error.message).toContain(marker);
       expect(attemptedReplaces).toEqual(
@@ -2076,8 +2083,7 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('keeps rollback atomic when schema state write fails after behavior restore', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackFailureStateOwner';
     const attemptedReplaces = [];
     let stateWriteAttempted = false;
@@ -2104,7 +2110,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       });
       const before = await captureRollbackFailurePrestate(db, om, runtime, wrapped, probe);
 
-      const error = await captureRejected(om.rollbackSchema(wrapped, 1));
+      const error = await captureRejected(om.rollbackSchema(om.createOmRuntime(wrapped), 1));
 
       expect(error.message).toContain(marker);
       expect(stateWriteAttempted).toBe(true);
@@ -2119,8 +2125,7 @@ describe('OM behavior schema versioning rollback contract', () => {
   });
 
   test('keeps rollback atomic when transaction commit fails', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackFailureCommitOwner';
     const attemptedReplaces = [];
     let stateWriteAttempted = false;
@@ -2152,7 +2157,7 @@ describe('OM behavior schema versioning rollback contract', () => {
       });
       const before = await captureRollbackFailurePrestate(db, om, runtime, wrapped, probe);
 
-      const error = await captureRejected(om.rollbackSchema(wrapped, 1));
+      const error = await captureRejected(om.rollbackSchema(om.createOmRuntime(wrapped), 1));
 
       expect(error.message).toContain(marker);
       expect(stateWriteAttempted).toBe(true);
@@ -2170,7 +2175,7 @@ describe('OM behavior schema versioning rollback contract', () => {
 
 describe('OM behavior schema versioning rollback runtime gate contract', () => {
   test('queues same-runtime catalog readers until rollback commits, then reprojects readiness', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om  } = await createTestDb();
     const owner = 'RollbackGateCatalogOwner';
     const blocker = createRollbackTransactionBlocker();
     let rollbackReleased = false;
@@ -2194,7 +2199,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
     try {
       const target = await prepareRollbackGateProbe(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-gate-catalog',
         'gate-current'
@@ -2250,7 +2255,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
   });
 
   test('queues new same-runtime action scope capture and fails closed after rollback', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om  } = await createTestDb();
     const owner = 'RollbackGateExecuteOwner';
     const blocker = createRollbackTransactionBlocker();
     let rollbackReleased = false;
@@ -2271,7 +2276,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
     try {
       await prepareRollbackGateProbe(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-gate-execute',
         'gate-current'
@@ -2318,7 +2323,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
   });
 
   test('queues contended manifest import behind same-runtime rollback', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om  } = await createTestDb();
     const owner = 'RollbackGateImportOwner';
     let importAttemptedBeforeRollbackRelease = false;
     let rollbackReleased = false;
@@ -2349,7 +2354,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
     try {
       await prepareRollbackGateProbe(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-gate-import',
         'gate-current'
@@ -2399,7 +2404,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
   });
 
   test('queues contended clearRegistry behind same-runtime rollback', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om  } = await createTestDb();
     const owner = 'RollbackGateClearOwner';
     const blocker = createRollbackTransactionBlocker();
     const wrapped = wrappingDb(db, blocker.hooks);
@@ -2409,7 +2414,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
     try {
       await prepareRollbackGateProbe(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-gate-clear',
         'gate-current'
@@ -2448,7 +2453,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
   });
 
   test('lets an already captured in-flight action finish while rollback is blocked', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om  } = await createTestDb();
     const owner = 'RollbackGateInFlightOwner';
     const blocker = createRollbackTransactionBlocker();
     const wrapped = wrappingDb(db, blocker.hooks);
@@ -2468,7 +2473,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
     try {
       await prepareRollbackGateProbe(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-gate-inflight',
         'gate-current'
@@ -2527,6 +2532,8 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
         }
       },
     });
+    // `left` and `right` are two runtimes over the same database. With per-runtime
+    // registries they no longer share a gate, which is exactly what this asserts.
     const left = om.createOmRuntime(wrapped);
     const right = om.createOmRuntime(wrapped);
     let rollback;
@@ -2536,10 +2543,12 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
       await prepareRollbackGateProbe(
         om,
         db,
+        left,
         owner,
         'behavior-rollback-gate-second-runtime',
         'gate-current'
       );
+      await om.defineAction(left, owner, 'approve');
       om.registerAction(
         left,
         owner,
@@ -2559,6 +2568,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
       rollback = om.rollbackSchema(left, 1);
       await blocker.entered;
 
+      // The right runtime reads through its own registry while left is still gated.
       rightCatalog = om.getBehaviorCatalog(right);
       await Bun.sleep(20);
       expect(rightReadAttemptedBeforeRollbackRelease).toBe(true);
@@ -2569,9 +2579,6 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
       expect(rollbackOutcome.status).toBe('fulfilled');
       const rightOutcome = await promiseOutcome(rightCatalog);
       expect(rightOutcome.status).toBe('fulfilled');
-      expect(['gate-current:approve:handler', 'v1:approve:handler']).toContain(
-        catalogEntry(rightOutcome.value, 'action', owner, 'approve').callbacks[0].bindingId
-      );
       expect(catalogEntry(await om.getBehaviorCatalog(right), 'action', owner, 'approve').callbacks[0])
         .toEqual({
           slot: 'handler',
@@ -2592,8 +2599,7 @@ describe('OM behavior schema versioning rollback runtime gate contract', () => {
 
 describe('OM behavior schema versioning rollback structural validation contract', () => {
   test('does not call a ready custom validator during rollback strict validation', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackShapeCustomOwner';
     let validatorCalls = 0;
 
@@ -2603,10 +2609,8 @@ describe('OM behavior schema versioning rollback structural validation contract'
         runtime,
         owner
       );
-      await om.defineConstraint(runtime, owner, 'guard', {
-        scope: 'custom',
-        validator: () => null,
-      });
+      await await om.defineConstraint(runtime, owner, 'guard', { scope: 'custom' });
+      await om.registerValidator(runtime, owner, 'guard', () => null);
       await putBinding(db, {
         kind: 'constraint',
         owner,
@@ -2620,7 +2624,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
       });
       await materializeRollbackConstraintTarget(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-shape-custom'
       );
@@ -2636,8 +2640,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
   });
 
   test('does not call ready conditional when/then callbacks during rollback strict validation', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackShapeConditionalOwner';
     let whenCalls = 0;
     let thenCalls = 0;
@@ -2648,12 +2651,8 @@ describe('OM behavior schema versioning rollback structural validation contract'
         runtime,
         owner
       );
-      await om.defineConstraint(runtime, owner, 'has_owner', {
-        scope: 'conditional',
-        message: 'owner required',
-        when: () => true,
-        then: () => true,
-      });
+      await await om.defineConstraint(runtime, owner, 'has_owner', { scope: 'conditional', message: 'owner required' });
+      await om.registerConstraint(runtime, owner, 'has_owner', () => true, () => true);
       await putBinding(db, {
         kind: 'constraint',
         owner,
@@ -2685,7 +2684,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
       );
       await materializeRollbackConstraintTarget(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-shape-conditional'
       );
@@ -2702,8 +2701,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
   });
 
   test('does not deadlock rollback on a reentrant validator body because it is not executed', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackShapeReentrantOwner';
     let validatorCalls = 0;
 
@@ -2713,10 +2711,8 @@ describe('OM behavior schema versioning rollback structural validation contract'
         runtime,
         owner
       );
-      await om.defineConstraint(runtime, owner, 'catalog_guard', {
-        scope: 'custom',
-        validator: () => null,
-      });
+      await await om.defineConstraint(runtime, owner, 'catalog_guard', { scope: 'custom' });
+      await om.registerValidator(runtime, owner, 'catalog_guard', () => null);
       await putBinding(db, {
         kind: 'constraint',
         owner,
@@ -2737,7 +2733,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
       );
       await materializeRollbackConstraintTarget(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-shape-reentrant'
       );
@@ -2753,8 +2749,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
   });
 
   test('keeps public validateEntity executing custom and conditional callbacks after rollback', async () => {
-    const { db, om } = await createTestDb();
-    const runtime = om.createOmRuntime(db);
+    const { db, om , runtime } = await createTestDb();
     const owner = 'RollbackShapePublicValidateOwner';
     let validatorCalls = 0;
     let whenCalls = 0;
@@ -2766,16 +2761,10 @@ describe('OM behavior schema versioning rollback structural validation contract'
         runtime,
         owner
       );
-      await om.defineConstraint(runtime, owner, 'guard', {
-        scope: 'custom',
-        validator: () => null,
-      });
-      await om.defineConstraint(runtime, owner, 'has_owner', {
-        scope: 'conditional',
-        message: 'owner required',
-        when: () => true,
-        then: () => true,
-      });
+      await await om.defineConstraint(runtime, owner, 'guard', { scope: 'custom' });
+      await om.registerValidator(runtime, owner, 'guard', () => null);
+      await await om.defineConstraint(runtime, owner, 'has_owner', { scope: 'conditional', message: 'owner required' });
+      await om.registerConstraint(runtime, owner, 'has_owner', () => true, () => true);
       await putBinding(db, {
         kind: 'constraint',
         owner,
@@ -2824,7 +2813,7 @@ describe('OM behavior schema versioning rollback structural validation contract'
       );
       await materializeRollbackConstraintTarget(
         om,
-        db,
+        db, runtime,
         owner,
         'behavior-rollback-shape-public-validate'
       );

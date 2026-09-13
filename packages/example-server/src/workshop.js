@@ -16,6 +16,7 @@ const path = require('path');
 const { CozoDb, om } = require('depa-ontology');
 const { demoMap, allDemos } = require('./demos');
 const { parseSheetsIntoBatch } = require('./helpers');
+const { registerModelDrivenMutations } = require('./model-driven-mutations');
 
 const TABLE_NAMES = {
   types: '类型定义',
@@ -230,9 +231,10 @@ function openCozoDb(engine, databasePath) {
 
 async function seedWorkshopDb(demo, existingDb) {
   const db = existingDb || new CozoDb('mem', '', {});
-  if (om && typeof om.clearRegistry === 'function') {
-    om.clearRegistry();
-  }
+  // Each demo gets its own runtime: the registry is a runtime-scoped resource, so two
+  // demos in one process no longer share (and overwrite) each other's behaviors.
+  const runtime = om.createOmRuntime(db);
+  om.clearRegistry(runtime);
 
   if (typeof demo.defineOntology === 'function') {
     await demo.defineOntology(db);
@@ -245,13 +247,15 @@ async function seedWorkshopDb(demo, existingDb) {
   const attrSchema = buildAttrSchema(tableMap);
   const dataSheets = sheetsFromDemo(demo);
   const batch = parseSheetsIntoBatch(dataSheets, attrSchema);
-  await om.ingestBatch(db, batch);
+  await om.ingestBatch(runtime, batch);
 
   if (typeof demo.registerBehaviors === 'function') {
-    await demo.registerBehaviors(db);
+    await demo.registerBehaviors(runtime);
   }
 
-  return db;
+  await registerModelDrivenMutations(runtime);
+
+  return { db, runtime };
 }
 
 /**
@@ -260,9 +264,8 @@ async function seedWorkshopDb(demo, existingDb) {
  * Does not overwrite existing property values.
  */
 async function evolveWorkshopDb(demo, db) {
-  if (om && typeof om.clearRegistry === 'function') {
-    om.clearRegistry();
-  }
+  const runtime = om.createOmRuntime(db);
+  om.clearRegistry(runtime);
 
   if (typeof demo.defineOntology === 'function') {
     await demo.defineOntology(db);
@@ -278,19 +281,19 @@ async function evolveWorkshopDb(demo, db) {
 
   for (const entity of batch.entities || []) {
     if (!entity || !entity.id) continue;
-    const view = await om.getEntityView(db, entity.id);
+    const view = await om.getEntityView(runtime, entity.id);
     if (!view) {
-      await om.createEntity(db, entity.id, entity.typeName, entity.label);
+      await om.createEntity(runtime, entity.id, entity.typeName, entity.label);
     }
   }
 
   for (const prop of batch.properties || []) {
     if (!prop || !prop.entityId || !prop.attrName) continue;
-    const view = await om.getEntityView(db, prop.entityId);
+    const view = await om.getEntityView(runtime, prop.entityId);
     if (!view) continue;
     const existing = view.properties || {};
     if (existing[prop.attrName] === undefined) {
-      await om.setProperty(db, prop.entityId, prop.attrName, prop.value);
+      await om.setProperty(runtime, prop.entityId, prop.attrName, prop.value);
     }
   }
 
@@ -300,28 +303,36 @@ async function evolveWorkshopDb(demo, db) {
     const outgoing = (neighbors && neighbors.outgoing) || [];
     const already = outgoing.some((n) => n.entityId === edge.toId);
     if (!already) {
-      await om.linkEntities(db, edge.fromId, edge.relName, edge.toId, edge.props || {});
+      await om.linkEntities(runtime, edge.fromId, edge.relName, edge.toId, edge.props || {});
     }
   }
 
   if (typeof demo.registerBehaviors === 'function') {
-    await demo.registerBehaviors(db);
+    await demo.registerBehaviors(runtime);
   }
 
-  return db;
+  await registerModelDrivenMutations(runtime);
+
+  return { db, runtime };
 }
 
+/**
+ * Resolve a demo's { demo, db, runtime }, seeding or evolving as needed.
+ *
+ * The runtime is cached with the db so every caller in the process shares one registry
+ * per demo — and, crucially, a *different* one from every other demo.
+ */
 async function getWorkshopDb(demoId) {
   const demo = resolveDemo(demoId);
   const cached = workshopDbCache.get(demoId);
-  if (cached) return { demo, db: cached };
+  if (cached) return { demo, db: cached.db, runtime: cached.runtime };
 
   const settings = resolveWorkshopSettings();
 
   if (!settings.persist) {
-    const db = await seedWorkshopDb(demo);
-    workshopDbCache.set(demoId, db);
-    return { demo, db };
+    const seeded = await seedWorkshopDb(demo);
+    workshopDbCache.set(demoId, seeded);
+    return { demo, db: seeded.db, runtime: seeded.runtime };
   }
 
   fs.mkdirSync(settings.dataDir, { recursive: true });
@@ -331,28 +342,26 @@ async function getWorkshopDb(demoId) {
   try {
     db = openCozoDb(settings.engine, dbPath);
   } catch (err) {
-    const mem = await seedWorkshopDb(demo);
-    workshopDbCache.set(demoId, mem);
-    return { demo, db: mem };
+    const seeded = await seedWorkshopDb(demo);
+    workshopDbCache.set(demoId, seeded);
+    return { demo, db: seeded.db, runtime: seeded.runtime };
   }
 
   const hasSchema = await dbHasOntologySchema(db);
-  if (!hasSchema) {
-    await seedWorkshopDb(demo, db);
-  } else {
-    await evolveWorkshopDb(demo, db);
-  }
+  const prepared = hasSchema
+    ? await evolveWorkshopDb(demo, db)
+    : await seedWorkshopDb(demo, db);
 
-  workshopDbCache.set(demoId, db);
-  return { demo, db };
+  workshopDbCache.set(demoId, prepared);
+  return { demo, db: prepared.db, runtime: prepared.runtime };
 }
 
 async function getDemoProjection(demoId) {
-  const { demo, db } = await getWorkshopDb(demoId);
+  const { demo, db, runtime } = await getWorkshopDb(demoId);
   if (typeof om.exportOntologyProjection !== 'function') {
     throw new Error('om.exportOntologyProjection is not available in depa-ontology');
   }
-  const projection = await om.exportOntologyProjection(db, {
+  const projection = await om.exportOntologyProjection(runtime, {
     name: demo.demoId,
     includeEnumHintsFromInstances: true,
   });
@@ -371,8 +380,8 @@ async function listObjectsByType(demoId, typeName, filter) {
 }
 
 async function getObjectDetail(demoId, typeName, entityId) {
-  const { db } = await getWorkshopDb(demoId);
-  const view = await om.getEntityView(db, entityId);
+  const { db, runtime } = await getWorkshopDb(demoId);
+  const view = await om.getEntityView(runtime, entityId);
   if (!view) {
     const err = new Error(`Entity not found: ${entityId}`);
     err.status = 404;
@@ -406,13 +415,13 @@ function parseRelNames(raw) {
 }
 
 async function getImpactGraph(demoId, entityId, opts) {
-  const { db } = await getWorkshopDb(demoId);
+  const { db, runtime } = await getWorkshopDb(demoId);
   const options = opts && typeof opts === 'object' ? opts : {};
   const maxDepthRaw = Number(options.maxDepth);
   const maxDepth = Number.isInteger(maxDepthRaw) && maxDepthRaw >= 0 ? maxDepthRaw : 3;
   const direction = options.direction || 'outgoing';
   const relNames = parseRelNames(options.relNames);
-  const result = await om.impactAnalysis(db, {
+  const result = await om.impactAnalysis(runtime, {
     rootId: entityId,
     relNames,
     maxDepth,
@@ -427,14 +436,15 @@ async function getImpactGraph(demoId, entityId, opts) {
 }
 
 async function getOwnershipTree(demoId, entityId, opts) {
-  const { db } = await getWorkshopDb(demoId);
+  const { db, runtime } = await getWorkshopDb(demoId);
   const options = opts && typeof opts === 'object' ? opts : {};
   const maxDepthRaw = Number(options.maxDepth);
   const maxDepth = Number.isInteger(maxDepthRaw) && maxDepthRaw >= 0 ? maxDepthRaw : 3;
-  const ownerRelNames = parseRelNames(options.ownerRelNames || options.relNames);
-  const treeOpts = { rootId: entityId, maxDepth };
-  if (ownerRelNames.length) treeOpts.ownerRelNames = ownerRelNames;
-  const result = await om.ownershipTree(db, treeOpts);
+  const requested = parseRelNames(options.ownerRelNames || options.relNames);
+  // Default to what the model declares, not a built-in name list: a demo's ownership
+  // relations are whatever it marked as ownership/composition.
+  const ownerRelNames = requested.length ? requested : await om.listOwnerRelations(db);
+  const result = await om.ownershipTree(runtime, { rootId: entityId, maxDepth, ownerRelNames });
   return {
     template: result.template,
     input: result.input,
@@ -471,4 +481,8 @@ module.exports = {
   resetWorkshopConfig,
   resolveWorkshopSettings,
   evolveWorkshopDb,
+  // Exposed so tests can diff the table-declared ontology against demo.defineOntology
+  // while the two sources are being collapsed into one.
+  defineOntologyFromTables,
+  tableMapFromTables,
 };

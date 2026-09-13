@@ -54,12 +54,8 @@ describe('OM behavior portability V1 contract', () => {
       expect(bindingRelation.rows).toEqual([]);
 
       await om.defineType(runtime, 'PortableOwner', 'portable owner');
-      await om.defineConstraint(runtime, 'PortableOwner', 'conditional_rule', {
-        scope: 'conditional',
-        message: 'conditional message',
-        when: () => true,
-        then: () => true,
-      });
+      await await om.defineConstraint(runtime, 'PortableOwner', 'conditional_rule', { scope: 'conditional', message: 'conditional message' });
+      await om.registerConstraint(runtime, 'PortableOwner', 'conditional_rule', () => true, () => true);
       await db.run(
         `
 ?[type_name, constraint_name, constraint_type, message] <-
@@ -67,35 +63,43 @@ describe('OM behavior portability V1 contract', () => {
 :put om_constraint_def {type_name, constraint_name => constraint_type, message}
         `.trim()
       );
-      await om.defineComputed(
+      await om.registerComputed(
         runtime,
         'PortableOwner',
         'computed_value',
-        () => 1,
-        'computed description'
+        () => 1
       );
-      await om.defineAction(
+      await om.defineComputed(runtime,
+        'PortableOwner',
+        'computed_value', 'computed description');
+      await om.registerAction(
         runtime,
         'PortableOwner',
         'portable_action',
-        () => [],
-        'action description'
+        () => []
       );
-      await om.defineAction(
+      await om.defineAction(runtime,
+        'PortableOwner',
+        'portable_action', 'action description');
+      await om.registerAction(
         runtime,
         'PortableOwner',
         'native_action',
-        () => [],
-        'native description'
+        () => []
       );
-      await om.defineMutation(
+      await om.defineAction(runtime,
+        'PortableOwner',
+        'native_action', 'native description');
+      await om.registerMutation(
         runtime,
         'PortableOwner',
         'portable_mutation',
-        () => {},
-        'mutation description'
+        () => {}
       );
-      await om.addInterceptor(
+      await om.defineMutation(runtime,
+        'PortableOwner',
+        'portable_mutation', 'mutation description');
+      await om.defineInterceptor(
         runtime,
         'PortableOwner',
         'portable_action',

@@ -4,7 +4,7 @@ const dsl = require('depa-datalog');
 
 describe('Phase 8: description support', () => {
   test('initSchema creates om_attr_desc and om_rel_desc relations', async () => {
-    const { db } = await createTestDb();
+    const { db , runtime } = await createTestDb();
     try {
       const q1 = dsl.query()
         .select(['type_name'])
@@ -32,7 +32,7 @@ describe('Phase 8: description support', () => {
   });
 
   test('defineAttribute with description stores it', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', true, 'The resource name');
@@ -47,7 +47,7 @@ describe('Phase 8: description support', () => {
   });
 
   test('defineAttribute without description does not set description', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineAttribute(db, 'Resource', 'name', 'String', false);
@@ -62,7 +62,7 @@ describe('Phase 8: description support', () => {
   });
 
   test('description inherits with correct precedence', async () => {
-    const { db, om } = await createTestDbWithHierarchy();
+    const { db, om , runtime } = await createTestDbWithHierarchy();
     try {
       await om.defineAttribute(db, 'Resource', 'name', 'String', false, 'Base name');
       await om.defineAttribute(db, 'ExecutableResource', 'name', 'String', false, 'IT name');
@@ -82,7 +82,7 @@ describe('Phase 8: description support', () => {
   });
 
   test('defineRelation with description stores it in om_rel_desc', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineRelation(db, 'depends_on', 'Resource', 'Resource', true, 'Dependency link');
@@ -104,7 +104,7 @@ describe('Phase 8: description support', () => {
   });
 
   test('defineRelation without description does not write to om_rel_desc', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Resource', 'Resource');
       await om.defineRelation(db, 'depends_on', 'Resource', 'Resource', true);

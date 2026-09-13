@@ -4,7 +4,7 @@ const { createTestDb } = require('./helpers');
 
 describe('temporal: getEdgeHistory', () => {
   test('returns full edge history and supports toId + time range filtering', async () => {
-    const { db, om } = await createTestDb();
+    const { db, om , runtime } = await createTestDb();
     try {
       await om.defineType(db, 'Employee', 'Employee');
       await om.defineType(db, 'Department', 'Department');
@@ -14,9 +14,9 @@ describe('temporal: getEdgeHistory', () => {
       await om.createEntity(db, 'dept:eng', 'Department', 'Engineering');
       await om.createEntity(db, 'dept:prod', 'Department', 'Product');
 
-      await om.linkEntities(db, 'emp:1', 'belongs_to', 'dept:eng', {}, { validTime: '2000-01-01T00:00:00Z' });
-      await om.unlinkEntities(db, 'emp:1', 'belongs_to', 'dept:eng', { validTime: '2001-01-01T00:00:00Z' });
-      await om.linkEntities(db, 'emp:1', 'belongs_to', 'dept:prod', {}, { validTime: '2001-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:1', 'belongs_to', 'dept:eng', {}, { validTime: '2000-01-01T00:00:00Z' });
+      await om.unlinkEntities(runtime, 'emp:1', 'belongs_to', 'dept:eng', { validTime: '2001-01-01T00:00:00Z' });
+      await om.linkEntities(runtime, 'emp:1', 'belongs_to', 'dept:prod', {}, { validTime: '2001-01-01T00:00:00Z' });
 
       const all = await om.getEdgeHistory(db, 'emp:1', 'belongs_to');
       expect(all.length).toBe(3);
