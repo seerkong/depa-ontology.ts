@@ -16,6 +16,7 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'Employee', 'salary', 'Number', true, '薪资');
   await om.defineAttribute(db, 'Employee', 'performance_score', 'Number', false, '绩效评分');
   await om.defineAttribute(db, 'Employee', 'competency_json', 'Json', false, '能力画像(JSON)');
+  await om.defineAttribute(db, 'Employee', 'status', 'String', false, '在职状态');
 
   await om.defineAttribute(db, 'Department', 'budget', 'Number', true, '预算');
   await om.defineAttribute(db, 'Department', 'headcount', 'Number', true, '编制人数');
@@ -36,6 +37,8 @@ async function defineOntology(db) {
   await om.defineRelation(db, 'fills_position', 'Employee', 'Position', true, '担任岗位');
   await om.defineRelation(db, 'requires_skill', 'Position', 'Skill', true, '需要技能');
   await om.defineRelation(db, 'reviewed_in', 'Employee', 'ReviewCycle', true, '参与考核周期');
+  await om.defineRelation(db, 'has_skill', 'Employee', 'Skill', true, '掌握技能');
+  await om.defineRelation(db, 'parent_dept', 'Department', 'Department', true, '上级部门');
 }
 
 const defaultSheets = {
@@ -51,6 +54,7 @@ const defaultSheets = {
       { id: 'emp:grace', typeName: 'Employee', label: '朴恩惠' },
       { id: 'dept:eng', typeName: 'Department', label: '工程部' },
       { id: 'dept:product', typeName: 'Department', label: '产品部' },
+      { id: 'dept:platform', typeName: 'Department', label: '平台组' },
       { id: 'pos:swe', typeName: 'Position', label: '软件工程师' },
       { id: 'pos:lead', typeName: 'Position', label: '技术负责人' },
       { id: 'pos:pm', typeName: 'Position', label: '产品经理' },
@@ -67,10 +71,12 @@ const defaultSheets = {
       { entityId: 'emp:alice', attrName: 'salary', value: 180000 },
       { entityId: 'emp:alice', attrName: 'performance_score', value: 4.5 },
       { entityId: 'emp:alice', attrName: 'competency_json', value: { leadership: 5, coding: 4 } },
+      { entityId: 'emp:alice', attrName: 'status', value: 'active' },
       { entityId: 'emp:bob', attrName: 'email', value: 'bob@acme.com' },
       { entityId: 'emp:bob', attrName: 'salary', value: 150000 },
       { entityId: 'emp:bob', attrName: 'performance_score', value: 4.2 },
       { entityId: 'emp:bob', attrName: 'competency_json', value: { backend: 5, devops: 3 } },
+      { entityId: 'emp:bob', attrName: 'status', value: 'active' },
       { entityId: 'emp:carol', attrName: 'email', value: 'carol@acme.com' },
       { entityId: 'emp:carol', attrName: 'salary', value: 145000 },
       { entityId: 'emp:carol', attrName: 'performance_score', value: 3.8 },
@@ -92,6 +98,9 @@ const defaultSheets = {
       { entityId: 'dept:product', attrName: 'budget', value: 800000 },
       { entityId: 'dept:product', attrName: 'headcount', value: 2 },
       { entityId: 'dept:product', attrName: 'location', value: '上海' },
+      { entityId: 'dept:platform', attrName: 'budget', value: 600000 },
+      { entityId: 'dept:platform', attrName: 'headcount', value: 3 },
+      { entityId: 'dept:platform', attrName: 'location', value: '北京' },
       { entityId: 'pos:swe', attrName: 'level', value: 'IC3' },
       { entityId: 'pos:swe', attrName: 'min_salary', value: 120000 },
       { entityId: 'pos:swe', attrName: 'max_salary', value: 160000 },
@@ -121,6 +130,7 @@ const defaultSheets = {
       { fromId: 'emp:frank', relName: 'works_in', toId: 'dept:eng', props: { since: '2024-07-01' } },
       { fromId: 'emp:eve', relName: 'works_in', toId: 'dept:product', props: { since: '2022-11-01' } },
       { fromId: 'emp:grace', relName: 'works_in', toId: 'dept:product', props: { since: '2023-04-20' } },
+      { fromId: 'dept:platform', relName: 'parent_dept', toId: 'dept:eng', props: {} },
       { fromId: 'emp:bob', relName: 'reports_to', toId: 'emp:alice', props: {} },
       { fromId: 'emp:carol', relName: 'reports_to', toId: 'emp:alice', props: {} },
       { fromId: 'emp:dave', relName: 'reports_to', toId: 'emp:bob', props: {} },
@@ -139,6 +149,11 @@ const defaultSheets = {
       { fromId: 'emp:bob', relName: 'reviewed_in', toId: 'rc:q1', props: { rating: 4.2 } },
       { fromId: 'emp:carol', relName: 'reviewed_in', toId: 'rc:q1', props: { rating: 3.8 } },
       { fromId: 'emp:eve', relName: 'reviewed_in', toId: 'rc:q1', props: { rating: 4.0 } },
+      { fromId: 'emp:alice', relName: 'has_skill', toId: 'sk:js', props: { proficiency: 'expert' } },
+      { fromId: 'emp:alice', relName: 'has_skill', toId: 'sk:sys', props: { proficiency: 'advanced' } },
+      { fromId: 'emp:bob', relName: 'has_skill', toId: 'sk:js', props: { proficiency: 'advanced' } },
+      { fromId: 'emp:carol', relName: 'has_skill', toId: 'sk:js', props: { proficiency: 'intermediate' } },
+      { fromId: 'emp:eve', relName: 'has_skill', toId: 'sk:sys', props: { proficiency: 'advanced' } },
     ],
   },
 };
@@ -163,6 +178,7 @@ const defaultTables = [
       { typeName: 'Employee', attrName: 'salary', valueType: 'Number', required: true, description: '薪资' },
       { typeName: 'Employee', attrName: 'performance_score', valueType: 'Number', required: false, description: '绩效评分' },
       { typeName: 'Employee', attrName: 'competency_json', valueType: 'Json', required: false, description: '能力画像(JSON)' },
+      { typeName: 'Employee', attrName: 'status', valueType: 'String', required: false, description: '在职状态' },
 
       { typeName: 'Department', attrName: 'budget', valueType: 'Number', required: true, description: '预算' },
       { typeName: 'Department', attrName: 'headcount', valueType: 'Number', required: true, description: '编制人数' },
@@ -188,6 +204,8 @@ const defaultTables = [
       { relName: 'fills_position', fromType: 'Employee', toType: 'Position', directed: true, description: '担任岗位' },
       { relName: 'requires_skill', fromType: 'Position', toType: 'Skill', directed: true, description: '需要技能' },
       { relName: 'reviewed_in', fromType: 'Employee', toType: 'ReviewCycle', directed: true, description: '参与考核周期' },
+      { relName: 'has_skill', fromType: 'Employee', toType: 'Skill', directed: true, description: '掌握技能' },
+      { relName: 'parent_dept', fromType: 'Department', toType: 'Department', directed: true, description: '上级部门' },
     ],
   },
   {
@@ -266,7 +284,7 @@ const queries = [
     run: async (db) => {
       const result = await om.ownershipTree(db, {
         rootId: 'emp:alice',
-        ownerRelNames: ['fills_position', 'requires_skill'],
+        ownerRelNames: ['fills_position', 'requires_skill', 'has_skill'],
         maxDepth: 3,
       });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };

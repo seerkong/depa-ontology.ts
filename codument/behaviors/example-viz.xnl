@@ -1,0 +1,114 @@
+<Behavior #example-viz apiVersion="codument.tech/v1alpha1" version="1" (
+  <Requirements [
+    <Requirement #example-server (
+      <Statement ?01M1W0XR5B4ECEPRZN7HB6QJ58>
+      Workspace SHALL 提供位于 packages/example-server 的私有 Bun/Elysia 示例服务，并通过 depa-ontology@0.1.0 使用 CozoDB 与本体能力。
+      </?01M1W0XR5B4ECEPRZN7HB6QJ58>
+      <Suites [
+        <Suite #server-api { name = "示例服务兼容性" } (
+          <Cases [
+            <Case #preserve-api-contract (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ59>
+              迁移前的 server 提供 health、demo、permission、schema、governance 与 integrity API
+              </?01M1W0XR5B4ECEPRZN7HB6QJ59>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5A>
+              迁移后的 example-server 启动或由测试直接调用 createApp
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5A>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5B>
+              服务 SHALL 保留这些 API、示例数据、查询结果形状与关闭资源的行为
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5B>
+            )>
+            <Case #workspace-ontology-dependency (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5C>
+              example-server 在本 workspace 中安装依赖
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5C>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5D>
+              server 加载数据库、本体和 Datalog 能力
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5D>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5E>
+              server MUST 从 depa-ontology 获取 CozoDb、om 与 dsl，且 MUST NOT 引用 cozo-lib-bun 或外部 file 依赖
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5E>
+            )>
+            <Case #server-tests (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5F>
+              server 的 demo 和 API 测试已迁移
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5F>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5G>
+              执行 example-server 的 Bun 测试
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5G>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5H>
+              所有迁移的 server 测试 SHALL 通过
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5H>
+            )>
+          ]>
+        )>
+      ]>
+    )>
+    <Requirement #example-browser (
+      <Statement ?01M1W0XR5B4ECEPRZN7HB6QJ5J>
+      Workspace SHALL 提供位于 packages/example-browser 的私有 Vue/Vite 示例浏览器，完整保留原可视化页面与交互。
+      </?01M1W0XR5B4ECEPRZN7HB6QJ5J>
+      <Suites [
+        <Suite #browser-surface { name = "浏览器展示面" } (
+          <Cases [
+            <Case #preserve-routes (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5K>
+              原应用包含 ontology、permission、governance 与 schema 四个路由页面
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5K>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5M>
+              example-browser 启动或构建
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5M>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5N>
+              浏览器 SHALL 保留四个页面、组件、API 客户端与默认 4174/4175 开发连接约定
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5N>
+            )>
+            <Case #production-build (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5P>
+              workspace 已安装 browser 依赖
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5P>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5Q>
+              执行 example-browser 的 production build
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5Q>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5R>
+              TypeScript、Vue 与 Vite 构建 SHALL 成功
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5R>
+            )>
+          ]>
+        )>
+      ]>
+    )>
+    <Requirement #browser-e2e (
+      <Statement ?01M1W0XR5B4ECEPRZN7HB6QJ5S>
+      Playwright 配置与 e2e specs SHALL 由 packages/example-browser 所有，并验证迁移后的 browser-server 完整链路。
+      </?01M1W0XR5B4ECEPRZN7HB6QJ5S>
+      <Suites [
+        <Suite #playwright-ownership { name = "端到端验收" } (
+          <Cases [
+            <Case #owned-by-browser (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5T>
+              原 e2e 资产位于 cozo-lib-bun-viz 顶层
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5T>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5V>
+              迁移到当前 workspace
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5V>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5W>
+              Playwright 配置、三个 spec 和相关 npm scripts SHALL 位于 packages/example-browser
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5W>
+            )>
+            <Case #full-e2e (
+              <Given ?01M1W0XR5B4ECEPRZN7HB6QJ5X>
+              example-server 与 example-browser 可由 Playwright webServer 启动
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5X>
+              <When ?01M1W0XR5B4ECEPRZN7HB6QJ5Y>
+              执行 example-browser 的 e2e 测试
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5Y>
+              <Then ?01M1W0XR5B4ECEPRZN7HB6QJ5Z>
+              原有 14 个场景 SHALL 在 Chromium 上通过，覆盖 demo、permission、governance、schema 与 integrity 流程
+              </?01M1W0XR5B4ECEPRZN7HB6QJ5Z>
+            )>
+          ]>
+        )>
+      ]>
+    )>
+  ]>
+)>

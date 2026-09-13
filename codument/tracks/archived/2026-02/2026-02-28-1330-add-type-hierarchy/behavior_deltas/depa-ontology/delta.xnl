@@ -1,0 +1,429 @@
+<BehaviorPatch #track.r_2_0_2_6_-_0_2_-_2_8_-_1_3_3_0_-_a_d_d_-_t_y_p_e_-_h_i_e_r_a_r_c_h_y.behavior_patch.depa-ontology apiVersion="codument.tech/v1alpha1" version="1" { capability = "depa-ontology" } (
+  <Mutations [
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-05d5a1d48a" } (
+      <Requirement #add-type-hierarchy-r-05d5a1d48a (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP09>
+        系统 SHALL 支持在 `om_type` 上定义单继承关系，每个类型最多有一个父类型（`parent_type`）。系统 SHALL 支持定义 mixin 接口，一个类型可以实现多个 mixin。mixin 仅提供属性定义的复用，不参与类型层级的 `isSubtypeOf` 判定。
+        </?01M1W0XR5YJ4RPA52HG4VCHP09>
+        <Suites [
+          <Suite #add-type-hierarchy-r-05d5a1d48a-suite { name = "类型继承定义" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-05d5a1d48a-c-4ddcab44ed { name = "定义单继承类型" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0A>
+                已存在类型 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0A>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0B>
+                调用 `defineType(runner, &apos;ITAsset&apos;, &apos;IT资产&apos;, { parentType: &apos;Asset&apos; })`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0B>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0C>
+                `om_type` 中创建 `ITAsset` 记录，`parent_type` 为 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0C>
+              )>
+              <Case #add-type-hierarchy-r-05d5a1d48a-c-fa3c2f7c52 { name = "定义多层继承链" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0D>
+                已存在类型 `Asset` 和 `ITAsset`（parent_type=Asset）
+                </?01M1W0XR5YJ4RPA52HG4VCHP0D>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0E>
+                调用 `defineType(runner, &apos;Server&apos;, &apos;服务器&apos;, { parentType: &apos;ITAsset&apos; })`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0E>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0F>
+                `Server` 的完整继承链为 `Server → ITAsset → Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0F>
+              )>
+              <Case #add-type-hierarchy-r-05d5a1d48a-c-574dab0b92 { name = "定义 mixin 接口" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0G>
+                已存在 mixin `Auditable`（定义了 `created_by`、`updated_at` 属性）
+                </?01M1W0XR5YJ4RPA52HG4VCHP0G>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0H>
+                调用 `defineType(runner, &apos;Server&apos;, &apos;服务器&apos;, { parentType: &apos;ITAsset&apos;, mixins: [&apos;Auditable&apos;] })`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0H>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0J>
+                `Server` 继承 `ITAsset` 的属性和关系，同时获得 `Auditable` 的属性定义
+                </?01M1W0XR5YJ4RPA52HG4VCHP0J>
+              )>
+              <Case #add-type-hierarchy-r-05d5a1d48a-c-1cefa6832c { name = "防止循环继承" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0K>
+                已存在类型 `A`（parent_type=B）和 `B`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0K>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0M>
+                调用 `defineType` 将 `B` 的 parent_type 设为 `A`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0M>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0N>
+                系统抛出错误，提示检测到循环继承
+                </?01M1W0XR5YJ4RPA52HG4VCHP0N>
+              )>
+              <Case #add-type-hierarchy-r-05d5a1d48a-c-42f46936a8 { name = "父类型不存在" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0P>
+                不存在类型 `NonExistent`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0P>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0Q>
+                调用 `defineType(runner, &apos;Child&apos;, &apos;子类型&apos;, { parentType: &apos;NonExistent&apos; })`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0Q>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0R>
+                系统抛出错误，提示父类型不存在
+                </?01M1W0XR5YJ4RPA52HG4VCHP0R>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-0cfc079cf8" } (
+      <Requirement #add-type-hierarchy-r-0cfc079cf8 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP0S>
+        系统 SHALL 支持子类型自动继承父类型及 mixin 的所有属性定义。子类型 SHALL 可以收紧继承的属性约束（如将 `required: false` 改为 `required: true`），但 SHALL NOT 允许放宽约束或更改 `value_type`。
+        </?01M1W0XR5YJ4RPA52HG4VCHP0S>
+        <Suites [
+          <Suite #add-type-hierarchy-r-0cfc079cf8-suite { name = "属性继承与收紧约束" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-0cfc079cf8-c-71f6aae9a0 { name = "子类型继承父类型属性" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0T>
+                类型 `Asset` 定义了属性 `name`(String, required) 和 `location`(String, optional)；类型 `ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0T>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0V>
+                调用 `getAttributeDefinitions(runner, &apos;ITAsset&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0V>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0W>
+                返回结果包含 `name`(String, required) 和 `location`(String, optional)；还包含 `ITAsset` 自身定义的属性
+                </?01M1W0XR5YJ4RPA52HG4VCHP0W>
+              )>
+              <Case #add-type-hierarchy-r-0cfc079cf8-c-c3cbc7b4e9 { name = "子类型收紧属性约束" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP0X>
+                类型 `Asset` 定义了属性 `location`(String, optional)；类型 `ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0X>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP0Y>
+                调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;location&apos;, &apos;String&apos;, true)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP0Y>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP0Z>
+                `ITAsset` 的 `location` 属性变为 required；`Asset` 的 `location` 属性仍为 optional
+                </?01M1W0XR5YJ4RPA52HG4VCHP0Z>
+              )>
+              <Case #add-type-hierarchy-r-0cfc079cf8-c-466a03ade5 { name = "禁止放宽约束" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP10>
+                类型 `Asset` 定义了属性 `name`(String, required)；类型 `ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP10>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP11>
+                调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;name&apos;, &apos;String&apos;, false)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP11>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP12>
+                系统抛出错误，提示不允许将 required 从 true 放宽为 false
+                </?01M1W0XR5YJ4RPA52HG4VCHP12>
+              )>
+              <Case #add-type-hierarchy-r-0cfc079cf8-c-a4d46ec80d { name = "禁止更改属性类型" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP13>
+                类型 `Asset` 定义了属性 `name`(String)；类型 `ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP13>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP14>
+                调用 `defineAttribute(runner, &apos;ITAsset&apos;, &apos;name&apos;, &apos;Number&apos;, true)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP14>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP15>
+                系统抛出错误，提示不允许更改继承属性的 value_type
+                </?01M1W0XR5YJ4RPA52HG4VCHP15>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-eb4ceda4b5" } (
+      <Requirement #add-type-hierarchy-r-eb4ceda4b5 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP16>
+        系统 SHALL 支持子类型自动继承父类型上定义的关系。当 `om_rel_def` 中 `from_type` 或 `to_type` 为某类型时，该类型的所有子类型 SHALL 自动适用该关系定义。`validateRelation` SHALL 递归检查类型继承链。
+        </?01M1W0XR5YJ4RPA52HG4VCHP16>
+        <Suites [
+          <Suite #add-type-hierarchy-r-eb4ceda4b5-suite { name = "关系继承" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-eb4ceda4b5-c-a5c7f6a23f { name = "子类型继承父类型的出边关系" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP17>
+                关系 `owned_by` 定义为 `Asset → Organization`；`ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP17>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP18>
+                调用 `linkEntities(runner, &apos;server-01&apos;, &apos;owned_by&apos;, &apos;org-01&apos;)` 其中 `server-01` 类型为 `ITAsset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP18>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP19>
+                关系创建成功，`validateRelation` 通过
+                </?01M1W0XR5YJ4RPA52HG4VCHP19>
+              )>
+              <Case #add-type-hierarchy-r-eb4ceda4b5-c-575d29f4f6 { name = "子类型继承父类型的入边关系" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1A>
+                关系 `manages` 定义为 `Person → Asset`；`Server` 继承自 `ITAsset` 继承自 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1A>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1B>
+                调用 `linkEntities(runner, &apos;admin-01&apos;, &apos;manages&apos;, &apos;server-01&apos;)` 其中 `server-01` 类型为 `Server`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1B>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1C>
+                关系创建成功
+                </?01M1W0XR5YJ4RPA52HG4VCHP1C>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-ce0fbf82b5" } (
+      <Requirement #add-type-hierarchy-r-ce0fbf82b5 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP1D>
+        系统 SHALL 支持按父类型查询时返回所有子类型的实例。`findByType` 默认包含子类型实例，可通过 `exact: true` 选项仅查询精确类型。`aggregateByType` 同样支持多态聚合。
+        </?01M1W0XR5YJ4RPA52HG4VCHP1D>
+        <Suites [
+          <Suite #add-type-hierarchy-r-ce0fbf82b5-suite { name = "多态查询" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-ce0fbf82b5-c-6f5dfddff3 { name = "findByType 默认多态查询" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1E>
+                存在 `Asset` 类型实例 2 个，`ITAsset` 实例 3 个，`Server` 实例 1 个；`ITAsset` 继承自 `Asset`，`Server` 继承自 `ITAsset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1E>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1F>
+                调用 `findByType(runner, &apos;Asset&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1F>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1G>
+                返回 6 个实例（2 + 3 + 1）
+                </?01M1W0XR5YJ4RPA52HG4VCHP1G>
+              )>
+              <Case #add-type-hierarchy-r-ce0fbf82b5-c-a7cb2fbfdb { name = "findByType 精确查询" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1H>
+                同上数据
+                </?01M1W0XR5YJ4RPA52HG4VCHP1H>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1J>
+                调用 `findByType(runner, &apos;Asset&apos;, {}, { exact: true })`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1J>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1K>
+                仅返回 2 个 `Asset` 类型实例
+                </?01M1W0XR5YJ4RPA52HG4VCHP1K>
+              )>
+              <Case #add-type-hierarchy-r-ce0fbf82b5-c-8d5f172773 { name = "aggregateByType 多态聚合" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1M>
+                `Asset` 及其子类型实例均有 `value` 属性
+                </?01M1W0XR5YJ4RPA52HG4VCHP1M>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1N>
+                调用 `aggregateByType(runner, &apos;Asset&apos;, &apos;value&apos;, &apos;sum&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1N>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1P>
+                返回所有 Asset 及子类型实例的 value 总和
+                </?01M1W0XR5YJ4RPA52HG4VCHP1P>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-2f75e6f5e0" } (
+      <Requirement #add-type-hierarchy-r-2f75e6f5e0 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP1Q>
+        系统 SHALL 提供查询类型继承关系的 API：`getTypeHierarchy` 返回完整继承树，`getAncestors` 返回祖先链，`getDescendants` 返回所有后代类型，`isSubtypeOf` 判断类型关系。
+        </?01M1W0XR5YJ4RPA52HG4VCHP1Q>
+        <Suites [
+          <Suite #add-type-hierarchy-r-2f75e6f5e0-suite { name = "继承链查询 API" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-2f75e6f5e0-c-40fe3dbcc6 { name = "获取完整继承树" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1R>
+                存在继承链 `Server → ITAsset → Asset` 和 `Vehicle → Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1R>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1S>
+                调用 `getTypeHierarchy(runner)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1S>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1T>
+                返回以根类型为起点的树结构，包含所有类型及其子类型
+                </?01M1W0XR5YJ4RPA52HG4VCHP1T>
+              )>
+              <Case #add-type-hierarchy-r-2f75e6f5e0-c-0cd0adcbec { name = "获取祖先链" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1V>
+                存在继承链 `Server → ITAsset → Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1V>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1W>
+                调用 `getAncestors(runner, &apos;Server&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1W>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP1X>
+                返回 `[&apos;ITAsset&apos;, &apos;Asset&apos;]`（从近到远）
+                </?01M1W0XR5YJ4RPA52HG4VCHP1X>
+              )>
+              <Case #add-type-hierarchy-r-2f75e6f5e0-c-d480dcad8d { name = "获取后代类型" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP1Y>
+                存在继承链 `Server → ITAsset → Asset` 和 `Laptop → ITAsset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1Y>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP1Z>
+                调用 `getDescendants(runner, &apos;Asset&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP1Z>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP20>
+                返回 `[&apos;ITAsset&apos;, &apos;Server&apos;, &apos;Laptop&apos;]`
+                </?01M1W0XR5YJ4RPA52HG4VCHP20>
+              )>
+              <Case #add-type-hierarchy-r-2f75e6f5e0-c-eb355bf810 { name = "判断子类型关系" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP21>
+                存在继承链 `Server → ITAsset → Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP21>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP22>
+                调用 `isSubtypeOf(runner, &apos;Server&apos;, &apos;Asset&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP22>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP23>
+                返回 `true`
+                </?01M1W0XR5YJ4RPA52HG4VCHP23>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-47b1a118d5" } (
+      <Requirement #add-type-hierarchy-r-47b1a118d5 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP24>
+        系统 SHALL 保持对现有无继承 schema 的完全向后兼容。`om_type` 表新增 `parent_type` 列默认为 `null`。现有 `defineType(runner, name, description)` 调用签名保持不变，新签名通过第四个 options 参数传入 `parentType` 和 `mixins`。`initSchema` SHALL 新增 `om_mixin` 和 `om_type_mixin` 存储关系。
+        </?01M1W0XR5YJ4RPA52HG4VCHP24>
+        <Suites [
+          <Suite #add-type-hierarchy-r-47b1a118d5-suite { name = "Schema 迁移兼容" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-47b1a118d5-c-6e0b095395 { name = "现有代码无需修改" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP25>
+                现有代码调用 `defineType(runner, &apos;Supplier&apos;, &apos;供应商&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP25>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP26>
+                升级到新版本后执行
+                </?01M1W0XR5YJ4RPA52HG4VCHP26>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP27>
+                行为与之前完全一致，`parent_type` 为 null
+                </?01M1W0XR5YJ4RPA52HG4VCHP27>
+              )>
+              <Case #add-type-hierarchy-r-47b1a118d5-c-39940dd136 { name = "initSchema 创建新关系" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP28>
+                legacy source did not declare this GWT field
+                </?01M1W0XR5YJ4RPA52HG4VCHP28>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP29>
+                调用 `initSchema(runner)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP29>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2A>
+                除现有 6 张表外，额外创建 `om_mixin`（mixin 定义）和 `om_type_mixin`（类型-mixin 关联）
+                </?01M1W0XR5YJ4RPA52HG4VCHP2A>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-e39c4f8fff" } (
+      <Requirement #add-type-hierarchy-r-e39c4f8fff (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP2B>
+        系统 SHALL 在 cozo-lib-bun-viz 中新增一个 IT 资产管理 demo，展示类型继承链、多态查询、schema 继承图。demo 包含 `Asset → ITAsset → Server/Laptop` 和 `Asset → Vehicle` 的继承结构，以及 mixin `Auditable` 的使用。
+        </?01M1W0XR5YJ4RPA52HG4VCHP2B>
+        <Suites [
+          <Suite #add-type-hierarchy-r-e39c4f8fff-suite { name = "继承可视化 Demo" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-e39c4f8fff-c-81e4ae1efc { name = "加载继承 Demo" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2C>
+                用户访问 cozo-lib-bun-viz 的本体 demo 页面
+                </?01M1W0XR5YJ4RPA52HG4VCHP2C>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2D>
+                选择 &quot;IT资产管理（继承）&quot; demo
+                </?01M1W0XR5YJ4RPA52HG4VCHP2D>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2E>
+                工作簿加载包含继承关系的类型定义、属性定义、实体数据；schema 图中展示类型继承关系（用不同样式的边区分继承和普通关系）
+                </?01M1W0XR5YJ4RPA52HG4VCHP2E>
+              )>
+              <Case #add-type-hierarchy-r-e39c4f8fff-c-4be9f3c73e { name = "多态查询展示" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2F>
+                已加载 IT 资产管理 demo 数据
+                </?01M1W0XR5YJ4RPA52HG4VCHP2F>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2G>
+                执行 &quot;按父类型查询所有资产&quot; 查询
+                </?01M1W0XR5YJ4RPA52HG4VCHP2G>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2H>
+                结果表格包含 Asset、ITAsset、Server、Laptop、Vehicle 的所有实例；每行显示实例的实际类型
+                </?01M1W0XR5YJ4RPA52HG4VCHP2H>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-afc46ce0bc" } (
+      <Requirement #add-type-hierarchy-r-afc46ce0bc (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP2J>
+        系统 SHALL 支持为属性定义与关系定义写入可选的 `description` 文本，用于承载业务语义说明。该能力 SHALL 与现有 schema 向后兼容：不要求对既有 `om_attr_def` / `om_rel_def` 做 schema 迁移。
+        </?01M1W0XR5YJ4RPA52HG4VCHP2J>
+        <Suites [
+          <Suite #add-type-hierarchy-r-afc46ce0bc-suite { name = "属性与关系描述字段" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-afc46ce0bc-c-8b20b6849a { name = "写入并读取属性 description" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2K>
+                已定义类型 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP2K>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2M>
+                调用 `defineAttribute(runner, &apos;Asset&apos;, &apos;asset_tag&apos;, &apos;String&apos;, true, &apos;资产编号&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP2M>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2N>
+                `getAttributeDefinitions(runner, &apos;Asset&apos;).get(&apos;asset_tag&apos;)` 包含 `description=&apos;资产编号&apos;`
+                </?01M1W0XR5YJ4RPA52HG4VCHP2N>
+              )>
+              <Case #add-type-hierarchy-r-afc46ce0bc-c-070e244a85 { name = "继承链上的 description 优先级" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2P>
+                `Asset` 定义属性 `name` description 为 &quot;资产名称&quot;；`ITAsset` 继承自 `Asset` 并定义同名属性 `name` description 为 &quot;IT资产名称&quot;
+                </?01M1W0XR5YJ4RPA52HG4VCHP2P>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2Q>
+                调用 `getAttributeDefinitions(runner, &apos;Server&apos;)`（其中 `Server → ITAsset → Asset`）
+                </?01M1W0XR5YJ4RPA52HG4VCHP2Q>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2R>
+                `name` 的 `description` 为 &quot;IT资产名称&quot;
+                </?01M1W0XR5YJ4RPA52HG4VCHP2R>
+              )>
+              <Case #add-type-hierarchy-r-afc46ce0bc-c-18bb70938c { name = "写入关系 description" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2S>
+                已定义类型 `Asset`
+                </?01M1W0XR5YJ4RPA52HG4VCHP2S>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2T>
+                调用 `defineRelation(runner, &apos;depends_on&apos;, &apos;Asset&apos;, &apos;Asset&apos;, true, &apos;依赖关系&apos;)`
+                </?01M1W0XR5YJ4RPA52HG4VCHP2T>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2V>
+                系统保存该关系的 description
+                </?01M1W0XR5YJ4RPA52HG4VCHP2V>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+    <Upsert { selector = "behavior://depa-ontology/requirements/add-type-hierarchy-r-d2626433c1" } (
+      <Requirement #add-type-hierarchy-r-d2626433c1 (
+        <Statement ?01M1W0XR5YJ4RPA52HG4VCHP2W>
+        系统 SHALL 将本次新增示例（cozo-lib-bun CLI demo 与 cozo-lib-bun-viz IT 资产 demo）中的类型描述改为中文，并在属性定义与关系定义中提供中文 description。 系统 SHOULD 将 cozo-lib-bun-viz 中所有本体 demo（采购、人力、CRM、IT 资产）统一为相同列结构，并确保 `description` 永远位于最后一列。
+        </?01M1W0XR5YJ4RPA52HG4VCHP2W>
+        <Suites [
+          <Suite #add-type-hierarchy-r-d2626433c1-suite { name = "Demo 使用中文描述" } (
+            <Cases [
+              <Case #add-type-hierarchy-r-d2626433c1-c-a9fcafd0e5 { name = "可视化 demo 表结构包含 description 列" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP2X>
+                用户加载 &quot;IT资产管理（继承）&quot; demo
+                </?01M1W0XR5YJ4RPA52HG4VCHP2X>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP2Y>
+                查看工作簿的 &quot;属性定义&quot; 与 &quot;关系定义&quot; sheet
+                </?01M1W0XR5YJ4RPA52HG4VCHP2Y>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP2Z>
+                两个 sheet 的列中包含 `description`；行数据中的 description 为中文
+                </?01M1W0XR5YJ4RPA52HG4VCHP2Z>
+              )>
+              <Case #add-type-hierarchy-r-d2626433c1-c-c753e7cf5d { name = "采购/人力/CRM demo 表结构包含 description 列" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP30>
+                用户加载采购、人力或 CRM demo
+                </?01M1W0XR5YJ4RPA52HG4VCHP30>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP31>
+                查看工作簿的 &quot;属性定义&quot; 与 &quot;关系定义&quot; sheet
+                </?01M1W0XR5YJ4RPA52HG4VCHP31>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP32>
+                两个 sheet 的列中包含 `description`
+                </?01M1W0XR5YJ4RPA52HG4VCHP32>
+              )>
+              <Case #add-type-hierarchy-r-d2626433c1-c-bd3179517c { name = "类型/属性/关系 description 均为最后一列" } (
+                <Given ?01M1W0XR5YJ4RPA52HG4VCHP33>
+                用户加载任意本体 demo
+                </?01M1W0XR5YJ4RPA52HG4VCHP33>
+                <When ?01M1W0XR5YJ4RPA52HG4VCHP34>
+                查看 &quot;类型定义&quot;、&quot;属性定义&quot;、&quot;关系定义&quot; sheet 的列顺序
+                </?01M1W0XR5YJ4RPA52HG4VCHP34>
+                <Then ?01M1W0XR5YJ4RPA52HG4VCHP35>
+                `description` 始终是最后一列
+                </?01M1W0XR5YJ4RPA52HG4VCHP35>
+              )>
+            ]>
+          )>
+        ]>
+      )>
+    )>
+  ]>
+)>

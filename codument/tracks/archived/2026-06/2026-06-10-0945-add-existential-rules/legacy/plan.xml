@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plan>
   <metadata>
+    <ApiVersion>codument.tech/v1alpha1</ApiVersion>
     <track_id>add-existential-rules</track_id>
     <track_name>cozo-om 存在规则子系统</track_name>
     <type>feature</type>

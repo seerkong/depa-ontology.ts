@@ -1,3 +1,4 @@
+process.env.WORKSHOP_PERSIST = process.env.WORKSHOP_PERSIST || '0';
 const { test, expect } = require('bun:test');
 
 const { createApp } = require('./index');

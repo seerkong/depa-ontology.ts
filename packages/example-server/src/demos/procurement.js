@@ -13,6 +13,7 @@ async function defineOntology(db) {
   await om.defineType(db, 'LineItem', '采购订单中的单个行项目');
   await om.defineType(db, 'Warehouse', '货物的实体仓储地点');
   await om.defineType(db, 'Contract', '管理采购条款的法律协议');
+  await om.defineType(db, 'Shipment', '采购单对应的在途发运');
 
   await om.defineAttribute(db, 'Supplier', 'rating', 'Number', true, '供应商评分');
   await om.defineAttribute(db, 'Supplier', 'country', 'String', true, '国家/地区');
@@ -33,11 +34,17 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'Contract', 'terms_json', 'Json', true, '合同条款(JSON)');
   await om.defineAttribute(db, 'Contract', 'valid_until', 'String', false, '有效期至');
 
+  await om.defineAttribute(db, 'Shipment', 'status', 'String', true, '发运状态');
+  await om.defineAttribute(db, 'Shipment', 'eta_days', 'Number', false, '预计到货天数');
+  await om.defineAttribute(db, 'Shipment', 'carrier', 'String', false, '承运商');
+
   await om.defineRelation(db, 'placed_with', 'PurchaseOrder', 'Supplier', true, '下单给');
   await om.defineRelation(db, 'has_line_item', 'PurchaseOrder', 'LineItem', true, '包含行项目');
   await om.defineRelation(db, 'fulfilled_by', 'LineItem', 'Warehouse', true, '由仓库履约');
   await om.defineRelation(db, 'covered_by', 'PurchaseOrder', 'Contract', true, '受合同覆盖');
   await om.defineRelation(db, 'supplies', 'Supplier', 'Warehouse', true, '供应给');
+  await om.defineRelation(db, 'ships', 'PurchaseOrder', 'Shipment', true, '发运');
+  await om.defineRelation(db, 'arrives_at', 'Shipment', 'Warehouse', true, '送达仓库');
 }
 
 // ── Default seed sheets ─────────────────────────────────────────────────────
@@ -60,6 +67,8 @@ const defaultSheets = {
       { id: 'wh:west', typeName: 'Warehouse', label: '华西仓储中心' },
       { id: 'ct:master', typeName: 'Contract', label: '主供应协议' },
       { id: 'ct:spot', typeName: 'Contract', label: '现货采购合同' },
+      { id: 'sh:1001a', typeName: 'Shipment', label: '发运-1001A' },
+      { id: 'sh:1003a', typeName: 'Shipment', label: '发运-1003A' },
     ],
   },
   properties: {
@@ -96,6 +105,12 @@ const defaultSheets = {
       { entityId: 'ct:master', attrName: 'valid_until', value: '2028-01-01' },
       { entityId: 'ct:spot', attrName: 'risk_score', value: 42 },
       { entityId: 'ct:spot', attrName: 'terms_json', value: { duration_months: 3, penalty_pct: 0, auto_renew: false } },
+      { entityId: 'sh:1001a', attrName: 'status', value: 'in_transit' },
+      { entityId: 'sh:1001a', attrName: 'eta_days', value: 5 },
+      { entityId: 'sh:1001a', attrName: 'carrier', value: '顺丰快运' },
+      { entityId: 'sh:1003a', attrName: 'status', value: 'scheduled' },
+      { entityId: 'sh:1003a', attrName: 'eta_days', value: 12 },
+      { entityId: 'sh:1003a', attrName: 'carrier', value: '中外运' },
     ],
   },
   edges: {
@@ -117,6 +132,10 @@ const defaultSheets = {
       { fromId: 's:acme', relName: 'supplies', toId: 'wh:east', props: { since: '2024-06-01' } },
       { fromId: 's:globex', relName: 'supplies', toId: 'wh:west', props: { since: '2025-01-15' } },
       { fromId: 's:initech', relName: 'supplies', toId: 'wh:west', props: { since: '2025-09-01' } },
+      { fromId: 'po:1001', relName: 'ships', toId: 'sh:1001a', props: { packed_on: '2026-01-18' } },
+      { fromId: 'po:1003', relName: 'ships', toId: 'sh:1003a', props: { packed_on: '2026-02-01' } },
+      { fromId: 'sh:1001a', relName: 'arrives_at', toId: 'wh:east', props: {} },
+      { fromId: 'sh:1003a', relName: 'arrives_at', toId: 'wh:west', props: {} },
     ],
   },
 };
@@ -131,6 +150,7 @@ const defaultTables = [
       { typeName: 'LineItem', parent_type: '', mixins: '', description: '采购订单中的单个行项目' },
       { typeName: 'Warehouse', parent_type: '', mixins: '', description: '货物的实体仓储地点' },
       { typeName: 'Contract', parent_type: '', mixins: '', description: '管理采购条款的法律协议' },
+      { typeName: 'Shipment', parent_type: '', mixins: '', description: '采购单对应的在途发运' },
     ],
   },
   {
@@ -155,6 +175,10 @@ const defaultTables = [
       { typeName: 'Contract', attrName: 'risk_score', valueType: 'Number', required: true, description: '风险评分' },
       { typeName: 'Contract', attrName: 'terms_json', valueType: 'Json', required: true, description: '合同条款(JSON)' },
       { typeName: 'Contract', attrName: 'valid_until', valueType: 'String', required: false, description: '有效期至' },
+
+      { typeName: 'Shipment', attrName: 'status', valueType: 'String', required: true, description: '发运状态' },
+      { typeName: 'Shipment', attrName: 'eta_days', valueType: 'Number', required: false, description: '预计到货天数' },
+      { typeName: 'Shipment', attrName: 'carrier', valueType: 'String', required: false, description: '承运商' },
     ],
   },
   {
@@ -166,6 +190,8 @@ const defaultTables = [
       { relName: 'fulfilled_by', fromType: 'LineItem', toType: 'Warehouse', directed: true, description: '由仓库履约' },
       { relName: 'covered_by', fromType: 'PurchaseOrder', toType: 'Contract', directed: true, description: '受合同覆盖' },
       { relName: 'supplies', fromType: 'Supplier', toType: 'Warehouse', directed: true, description: '供应给' },
+      { relName: 'ships', fromType: 'PurchaseOrder', toType: 'Shipment', directed: true, description: '发运' },
+      { relName: 'arrives_at', fromType: 'Shipment', toType: 'Warehouse', directed: true, description: '送达仓库' },
     ],
   },
   {
@@ -237,7 +263,7 @@ const queries = [
     run: async (db) => {
       const result = await om.impactAnalysis(db, {
         rootId: 'po:1001',
-        relNames: ['has_line_item', 'fulfilled_by', 'placed_with', 'covered_by'],
+        relNames: ['has_line_item', 'fulfilled_by', 'placed_with', 'covered_by', 'ships', 'arrives_at'],
         maxDepth: 3,
         direction: 'outgoing',
       });

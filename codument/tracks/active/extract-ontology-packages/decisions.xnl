@@ -1,4 +1,8 @@
-<decisions #extract_ontology_packages [
-  <decision #published_native_dependency { status = "accepted" } ?>depa-ontology 固定依赖 npm 上的 depa-cozo@0.1.0；不使用本地 file 依赖。 </?>
-  <decision #datalog_separate_package { status = "accepted" } ?>Datalog 不属于 ontology，保留为独立 depa-datalog 包。 </?>
+<decisions #extract_ontology_packages apiVersion="codument.tech/v1alpha1" [
+  <decision #published_native_dependency { status = "accepted" } ?01M1W0XR5KKQXK2HRNQXN7YWQ3>
+  depa-ontology 固定依赖 npm 上的 depa-cozo@0.1.0；不使用本地 file 依赖。 
+  </?01M1W0XR5KKQXK2HRNQXN7YWQ3>
+  <decision #datalog_separate_package { status = "accepted" } ?01M1W0XR5KKQXK2HRNQXN7YWQ4>
+  Datalog 不属于 ontology，保留为独立 depa-datalog 包。 
+  </?01M1W0XR5KKQXK2HRNQXN7YWQ4>
 ]>

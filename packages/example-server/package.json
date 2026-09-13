@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "bun --watch src/index.js",
     "start": "bun src/index.js",
-    "test": "bun test"
+    "test": "WORKSHOP_PERSIST=0 bun test"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.2.0",
     "depa-ontology": "0.1.0",
+    "depa-processor": "file:../../../../depa-processor",
     "elysia": "^1.2.25"
   }
 }

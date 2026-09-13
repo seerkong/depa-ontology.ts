@@ -1,1 +1,1 @@
-<decisions #add_type_hierarchy []>
+<decisions #add_type_hierarchy apiVersion="codument.tech/v1alpha1" []>

@@ -52,3 +52,10 @@ bun-debug.log*
 # Codument transient execution output
 codument/**/analysis/
 codument/**/reports/
+codument/**/analysis
+codument/**/reports
+codument/.local/
+
+# Workshop persisted Cozo DBs
+.data/
+packages/example-server/.data/

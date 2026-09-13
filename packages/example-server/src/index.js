@@ -4,6 +4,21 @@ const { CozoDb, om } = require('depa-ontology');
 const { allDemos, demoMap } = require('./demos');
 const { parseSheetsIntoBatch } = require('./helpers');
 const { permissionModels, permissionModelMap } = require('./permission/models');
+const {
+  getDemoProjection,
+  listObjectsByType,
+  getObjectDetail,
+  getImpactGraph,
+  getOwnershipTree,
+  closeWorkshopDbs,
+  configureWorkshop,
+  resetWorkshopConfig,
+} = require('./workshop');
+const {
+  listOperations,
+  getOperation,
+  invokeOperation,
+} = require('./operations');
 
 // cozo-om keeps its behavior registries at module scope (global per process).
 // /api/run clears and repopulates the registry per request, so concurrent runs can race.
@@ -380,6 +395,14 @@ async function seedGovernanceFromTables(runner, tables) {
 
 function createApp(options) {
   const opts = options && typeof options === 'object' ? options : {};
+  if (opts.workshop && typeof opts.workshop === 'object') {
+    configureWorkshop(opts.workshop);
+  } else if (opts.workshopPersist != null || opts.workshopDataDir) {
+    configureWorkshop({
+      ...(opts.workshopPersist != null ? { persist: !!opts.workshopPersist } : {}),
+      ...(opts.workshopDataDir ? { dataDir: opts.workshopDataDir } : {}),
+    });
+  }
   const sharedDb = opts.db || new CozoDb();
   let governanceDb = opts.governanceDb || new CozoDb();
   // The integrity demo keeps its own db so /api/governance/seed (used by the
@@ -691,18 +714,140 @@ function createApp(options) {
         });
         return { ok: true, result };
       });
+    })
+
+    // GET /api/demos/:id/projection — OntologyProjection for a demo
+    .get('/api/demos/:id/projection', async ({ params }) => {
+      const demoId = params.id;
+      return withOmRegistryLock(async () => {
+        try {
+          const projection = await getDemoProjection(demoId);
+          return { status: 'ok', projection };
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          const status = err.status === 404 ? 'error' : 'error';
+          return { status, error: message };
+        }
+      });
+    })
+
+    // GET /api/demos/:id/objects/:typeName — list entities of a type
+    .get('/api/demos/:id/objects/:typeName', async ({ params, query }) => {
+      const demoId = params.id;
+      const typeName = params.typeName;
+      return withOmRegistryLock(async () => {
+        try {
+          const filter = query && query.filter ? JSON.parse(query.filter) : {};
+          const entities = await listObjectsByType(demoId, typeName, filter);
+          return { status: 'ok', typeName, entities };
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          return { status: 'error', error: message };
+        }
+      });
+    })
+
+    // GET /api/demos/:id/objects/:typeName/:entityId — entity detail + links
+    .get('/api/demos/:id/objects/:typeName/:entityId', async ({ params }) => {
+      const { id: demoId, typeName, entityId } = params;
+      return withOmRegistryLock(async () => {
+        try {
+          const entity = await getObjectDetail(demoId, typeName, entityId);
+          return { status: 'ok', entity };
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          return { status: 'error', error: message };
+        }
+      });
+    })
+
+    // GET /api/demos/:id/graph/impact/:entityId — OM impactAnalysis (no JOIN)
+    .get('/api/demos/:id/graph/impact/:entityId', async ({ params, query }) => {
+      const demoId = params.id;
+      const entityId = decodeURIComponent(params.entityId);
+      return withOmRegistryLock(async () => {
+        try {
+          const graph = await getImpactGraph(demoId, entityId, {
+            maxDepth: query && query.maxDepth,
+            direction: query && query.direction,
+            relNames: query && query.relNames,
+          });
+          return { status: 'ok', ...graph };
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          return { status: 'error', error: message };
+        }
+      });
+    })
+
+    // GET /api/demos/:id/graph/tree/:entityId — OM ownershipTree
+    .get('/api/demos/:id/graph/tree/:entityId', async ({ params, query }) => {
+      const demoId = params.id;
+      const entityId = decodeURIComponent(params.entityId);
+      return withOmRegistryLock(async () => {
+        try {
+          const tree = await getOwnershipTree(demoId, entityId, {
+            maxDepth: query && query.maxDepth,
+            ownerRelNames: query && (query.ownerRelNames || query.relNames),
+          });
+          return { status: 'ok', ...tree };
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          return { status: 'error', error: message };
+        }
+      });
+    })
+
+    // GET /api/demos/:demoId/operations — OntologyOperation list
+    .get('/api/demos/:id/operations', async ({ params }) => {
+      const demoId = params.id;
+      try {
+        const operations = listOperations(demoId);
+        return { status: 'ok', operations };
+      } catch (err) {
+        const message = err.display || err.message || String(err);
+        return { status: 'error', error: message };
+      }
+    })
+
+    // GET /api/demos/:demoId/operations/:fqnOrId — OntologyOperation detail
+    .get('/api/demos/:id/operations/:fqnOrId', async ({ params }) => {
+      const demoId = params.id;
+      const fqnOrId = decodeURIComponent(params.fqnOrId);
+      try {
+        const operation = getOperation(demoId, fqnOrId);
+        return { status: 'ok', operation };
+      } catch (err) {
+        const message = err.display || err.message || String(err);
+        return { status: 'error', error: message };
+      }
+    })
+
+    // POST /api/demos/:demoId/invoke — OntologyOperation invoke
+    .post('/api/demos/:id/invoke', async ({ params, body }) => {
+      const demoId = params.id;
+      return withOmRegistryLock(async () => {
+        try {
+          return await invokeOperation(demoId, body || {});
+        } catch (err) {
+          const message = err.display || err.message || String(err);
+          return { status: 'error', ok: false, error: { code: 'RUNTIME', message } };
+        }
+      });
     });
 
   function close() {
     try { sharedDb.close(); } catch (_) { /* ignore */ }
     try { governanceDb.close(); } catch (_) { /* ignore */ }
     try { integrityDb.close(); } catch (_) { /* ignore */ }
+    try { closeWorkshopDbs(); } catch (_) { /* ignore */ }
+    try { resetWorkshopConfig(); } catch (_) { /* ignore */ }
   }
 
   return { app, close, db: sharedDb };
 }
 
-module.exports = { createApp, withOmRegistryLock };
+module.exports = { createApp, withOmRegistryLock, listOperations, getOperation, invokeOperation };
 
 if (require.main === module) {
   const { app } = createApp();

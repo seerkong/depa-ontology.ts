@@ -1,9 +1,7 @@
-<module #examples.server {
-  kind = "module"
-  depends_on = ["depa-ontology" "elysia" "@elysiajs/cors"]
-  behaviors = ["behavior://example-viz/requirements/example-server"]
-} [
-  <desc ?>Bun/Elysia 示例后端：把浏览器请求适配为 depa-ontology 与 CozoDB 调用，不拥有 native binding 或本体运行时实现。</?>
+<module #examples.server apiVersion="codument.tech/v1alpha1" { kind = "module" depends_on = ["depa-ontology" "elysia" "@elysiajs/cors"] behaviors = ["behavior://example-viz/requirements/example-server"] } [
+  <desc ?01M1W0XR6QXQ50SMXA1XAVXAW6>
+  Bun/Elysia 示例后端：把浏览器请求适配为 depa-ontology 与 CozoDB 调用，不拥有 native binding 或本体运行时实现。
+  </?01M1W0XR6QXQ50SMXA1XAVXAW6>
   <capsule-tree ?tree>
   packages/example-server/
     package.json                         # 私有 workspace 包；声明 dev/start/test 与 depa-ontology 依赖
@@ -16,15 +14,15 @@
     src/permission/models.js             # 直接 CozoDB 权限模型与查询
     src/*-api.test.js                    # schema、governance 与 integrity API 验收
   </?tree>
-  <not-owned-here ?>depa-cozo 负责 native loading；depa-ontology 负责对象模型、治理、schema 和 Datalog API。</?>
+  <not-owned-here ?01M1W0XR6QXQ50SMXA1XAVXAW7>
+  depa-cozo 负责 native loading；depa-ontology 负责对象模型、治理、schema 和 Datalog API。
+  </?01M1W0XR6QXQ50SMXA1XAVXAW7>
 ]>
 
-<module #examples.browser {
-  kind = "module"
-  depends_on = ["modeling://domain/examples/server" "vue" "vite" "@playwright/test"]
-  behaviors = ["behavior://example-viz/requirements/example-browser" "behavior://example-viz/requirements/browser-e2e"]
-} [
-  <desc ?>Vue/Vite 示例展示面及其 Playwright 验收所有者；通过 HTTP API 消费 example-server，不直接加载 native 或 ontology 包。</?>
+<module #examples.browser apiVersion="codument.tech/v1alpha1" { kind = "module" depends_on = ["modeling://domain/examples/server" "vue" "vite" "@playwright/test"] behaviors = ["behavior://example-viz/requirements/example-browser" "behavior://example-viz/requirements/browser-e2e"] } [
+  <desc ?01M1W0XR6RS04BP49ZJDSBJ6FG>
+  Vue/Vite 示例展示面及其 Playwright 验收所有者；通过 HTTP API 消费 example-server，不直接加载 native 或 ontology 包。
+  </?01M1W0XR6RS04BP49ZJDSBJ6FG>
   <capsule-tree ?tree>
   packages/example-browser/
     package.json                         # 私有 workspace 包；声明 dev/build/preview/e2e scripts
@@ -40,5 +38,7 @@
     playwright.config.ts                 # 跨 workspace 启动 server/browser 的 Chromium 配置
     e2e/*.pw.ts                          # demo、permission、schema、governance、integrity 端到端验收
   </?tree>
-  <not-owned-here ?>HTTP API 实现与数据库生命周期属于 example-server；本体行为属于 depa-ontology。</?>
+  <not-owned-here ?01M1W0XR6RS04BP49ZJDSBJ6FH>
+  HTTP API 实现与数据库生命周期属于 example-server；本体行为属于 depa-ontology。
+  </?01M1W0XR6RS04BP49ZJDSBJ6FH>
 ]>

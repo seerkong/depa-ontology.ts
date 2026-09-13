@@ -300,3 +300,86 @@ export async function explainGovernanceAccess(
   const data: GovernanceAccessResponse = await res.json();
   return data.result;
 }
+
+
+// --- Ontology Workshop endpoints ---
+
+export interface OntologyProjectionAttribute {
+  name: string;
+  valueType: string;
+  required: boolean;
+  description?: string;
+  statusLike?: boolean;
+  enumHints?: string[];
+}
+
+export interface OntologyProjectionType {
+  name: string;
+  description?: string;
+  parentType?: string | null;
+  mixins?: string[];
+  attributes: OntologyProjectionAttribute[];
+}
+
+export interface OntologyProjectionRelation {
+  name: string;
+  fromType: string;
+  toType: string;
+  directed: boolean;
+}
+
+export interface OntologyProjection {
+  meta: { source: string; name: string; exportedAt: string };
+  types: OntologyProjectionType[];
+  relations: OntologyProjectionRelation[];
+  behaviors?: Array<{ kind: string; ownerType: string; name: string; description?: string | null }>;
+  gaps: string[];
+}
+
+export interface WorkshopEntitySummary {
+  id: string;
+  label: string;
+  typeName: string;
+  properties: Record<string, any>;
+}
+
+export interface WorkshopEntityDetail {
+  id: string;
+  typeName: string;
+  label: string;
+  properties: Record<string, any>;
+  outgoing: Array<{ relName: string; toId: string; toType: string; toLabel: string }>;
+  incoming: Array<{ relName: string; fromId: string; fromType: string; fromLabel: string }>;
+}
+
+export async function fetchDemoProjection(demoId: string): Promise<OntologyProjection> {
+  const res = await fetch(`${API_BASE}/api/demos/${encodeURIComponent(demoId)}/projection`);
+  assertOk(res, "Failed to fetch ontology projection");
+  const data = await res.json();
+  if (data.status === "error") throw new Error(data.error || "projection failed");
+  return data.projection as OntologyProjection;
+}
+
+export async function fetchObjectsByType(demoId: string, typeName: string): Promise<WorkshopEntitySummary[]> {
+  const res = await fetch(
+    `${API_BASE}/api/demos/${encodeURIComponent(demoId)}/objects/${encodeURIComponent(typeName)}`,
+  );
+  assertOk(res, "Failed to fetch objects");
+  const data = await res.json();
+  if (data.status === "error") throw new Error(data.error || "objects failed");
+  return data.entities as WorkshopEntitySummary[];
+}
+
+export async function fetchObjectDetail(
+  demoId: string,
+  typeName: string,
+  entityId: string,
+): Promise<WorkshopEntityDetail> {
+  const res = await fetch(
+    `${API_BASE}/api/demos/${encodeURIComponent(demoId)}/objects/${encodeURIComponent(typeName)}/${encodeURIComponent(entityId)}`,
+  );
+  assertOk(res, "Failed to fetch object detail");
+  const data = await res.json();
+  if (data.status === "error") throw new Error(data.error || "object detail failed");
+  return data.entity as WorkshopEntityDetail;
+}

@@ -1,139 +1,170 @@
-<decisions #migrate_viz_examples [
-  <decision #migrate_viz_examples.scope {
-    priority = "P0"
-    status = "accepted"
-  }
-  (
-    <question ?>迁移是否保留完整 server、browser 与 e2e 行为？</?>
-    <answer { }
-    (
-      <raw-answer ?>将 server 迁到 packages/example-server，前端和 e2e 迁到 packages/example-browser。</?>
-      <decision-text ?>完整迁移受管源码、server tests、browser 页面与三个 Playwright specs，仅适配包边界和运行路径。</?>
-      <rationale ?>用户明确指定三部分的目标所有权；完整保留可以让示例继续承担跨层验收。</?>
-      <evidence ?>源目录包含 server、frontend、e2e 和 Playwright 配置。</?>
-    )
-    >
-  )
-  >
-
-  <decision #migrate_viz_examples.dependency_boundary {
-    priority = "P0"
-    status = "accepted"
-  }
-  (
-    <question ?>example-server 应从哪里加载 CozoDB、本体和 Datalog API？</?>
-    <answer { }
-    (
-      <raw-answer ?>本项目由 cozo-lib-bun 拆分迁移而来。</?>
-      <decision-text ?>example-server 使用 depa-ontology@0.1.0 的 workspace 依赖和公共入口。</?>
-      <rationale ?>depa-ontology 已聚合导出 CozoDb、om 与 dsl，符合新的包边界。</?>
-      <evidence ?>packages/depa-ontology/index.js 与 package.json。</?>
-    )
-    >
-  )
-  >
-
-  <decision #migrate_viz_examples.source_retention {
-    priority = "P1"
-    status = "accepted"
-  }
-  (
-    <question ?>迁移后是否删除或改写外部源目录？</?>
-    <answer { }
-    (
-      <raw-answer ?>迁移到本 workspace。</?>
-      <decision-text ?>只复制并适配到当前 workspace，不删除或修改外部源目录。</?>
-      <rationale ?>跨仓库删除不是实现迁移所必需，保留源可用于对照和回滚。</?>
-      <evidence ?>用户只授权当前 workspace 的迁移目标。</?>
-    )
-    >
-  )
-  >
-
-  <decision #migrate_viz_examples.e2e_ownership {
-    priority = "P0"
-    status = "accepted"
-  }
-  (
-    <question ?>Playwright 配置、依赖与 scripts 由哪个包拥有？</?>
-    <answer { }
-    (
-      <raw-answer ?>将 e2e 部分迁移到 packages/example-browser。</?>
-      <decision-text ?>example-browser 拥有 Playwright 配置、devDependency、scripts 和 e2e specs。</?>
-      <rationale ?>使 browser 包自包含地启动 frontend 与相邻 example-server 做端到端验收。</?>
-      <evidence ?>用户明确指定 e2e 的目标包。</?>
-    )
-    >
-  )
-  >
-
-  <decision #migrate_viz_examples.commit_mode {
-    priority = "P0"
-    status = "accepted"
-    blocks = ["track.xml" "implementation"]
-  }
-  (
-    <question ?>实现阶段采用自动提交还是手动提交？</?>
-    <options { } [
-      <option { key = "B" recommended = true }
-      (
-        <title ?>手动提交</?>
-        <description ?>实现和验证完成后保留未提交改动，由用户控制提交时机。</?>
-        <tradeoff ?>不会自动形成任务级提交记录。</?>
-      )
-      >
-      <option { key = "A" }
-      (
-        <title ?>自动提交</?>
-        <description ?>任务完成后由执行流程自动创建 commit 和 Git Notes。</?>
-        <tradeoff ?>当前仓库尚无首个 commit，自动提交会同时确立初始历史。</?>
-      )
-      >
+<decisions #migrate_viz_examples apiVersion="codument.tech/v1alpha1" [
+  <decision #migrate_viz_examples.scope { priority = "P0" status = "accepted" } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXATT>
+    迁移是否保留完整 server、browser 与 e2e 行为？
+    </?01M1W0XR6QXQ50SMXA1XAVXATT>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXATV>
+      将 server 迁到 packages/example-server，前端和 e2e 迁到 packages/example-browser。
+      </?01M1W0XR6QXQ50SMXA1XAVXATV>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXATW>
+      完整迁移受管源码、server tests、browser 页面与三个 Playwright specs，仅适配包边界和运行路径。
+      </?01M1W0XR6QXQ50SMXA1XAVXATW>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXATX>
+      用户明确指定三部分的目标所有权；完整保留可以让示例继续承担跨层验收。
+      </?01M1W0XR6QXQ50SMXA1XAVXATX>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXATY>
+      源目录包含 server、frontend、e2e 和 Playwright 配置。
+      </?01M1W0XR6QXQ50SMXA1XAVXATY>
+    )>
+  )>
+  <decision #migrate_viz_examples.dependency_boundary { priority = "P0" status = "accepted" } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXATZ>
+    example-server 应从哪里加载 CozoDB、本体和 Datalog API？
+    </?01M1W0XR6QXQ50SMXA1XAVXATZ>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXAV0>
+      本项目由 cozo-lib-bun 拆分迁移而来。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV0>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXAV1>
+      example-server 使用 depa-ontology@0.1.0 的 workspace 依赖和公共入口。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV1>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXAV2>
+      depa-ontology 已聚合导出 CozoDb、om 与 dsl，符合新的包边界。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV2>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXAV3>
+      packages/depa-ontology/index.js 与 package.json。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV3>
+    )>
+  )>
+  <decision #migrate_viz_examples.source_retention { priority = "P1" status = "accepted" } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXAV4>
+    迁移后是否删除或改写外部源目录？
+    </?01M1W0XR6QXQ50SMXA1XAVXAV4>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXAV5>
+      迁移到本 workspace。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV5>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXAV6>
+      只复制并适配到当前 workspace，不删除或修改外部源目录。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV6>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXAV7>
+      跨仓库删除不是实现迁移所必需，保留源可用于对照和回滚。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV7>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXAV8>
+      用户只授权当前 workspace 的迁移目标。
+      </?01M1W0XR6QXQ50SMXA1XAVXAV8>
+    )>
+  )>
+  <decision #migrate_viz_examples.e2e_ownership { priority = "P0" status = "accepted" } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXAV9>
+    Playwright 配置、依赖与 scripts 由哪个包拥有？
+    </?01M1W0XR6QXQ50SMXA1XAVXAV9>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXAVA>
+      将 e2e 部分迁移到 packages/example-browser。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVA>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXAVB>
+      example-browser 拥有 Playwright 配置、devDependency、scripts 和 e2e specs。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVB>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXAVC>
+      使 browser 包自包含地启动 frontend 与相邻 example-server 做端到端验收。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVC>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXAVD>
+      用户明确指定 e2e 的目标包。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVD>
+    )>
+  )>
+  <decision #migrate_viz_examples.commit_mode { priority = "P0" status = "accepted" blocks = ["track.xml" "implementation"] } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXAVE>
+    实现阶段采用自动提交还是手动提交？
+    </?01M1W0XR6QXQ50SMXA1XAVXAVE>
+    <options {  } [
+      <option { key = "B" recommended = true } (
+        <title ?01M1W0XR6QXQ50SMXA1XAVXAVF>
+        手动提交
+        </?01M1W0XR6QXQ50SMXA1XAVXAVF>
+        <description ?01M1W0XR6QXQ50SMXA1XAVXAVG>
+        实现和验证完成后保留未提交改动，由用户控制提交时机。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVG>
+        <tradeoff ?01M1W0XR6QXQ50SMXA1XAVXAVH>
+        不会自动形成任务级提交记录。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVH>
+      )>
+      <option { key = "A" } (
+        <title ?01M1W0XR6QXQ50SMXA1XAVXAVJ>
+        自动提交
+        </?01M1W0XR6QXQ50SMXA1XAVXAVJ>
+        <description ?01M1W0XR6QXQ50SMXA1XAVXAVK>
+        任务完成后由执行流程自动创建 commit 和 Git Notes。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVK>
+        <tradeoff ?01M1W0XR6QXQ50SMXA1XAVXAVM>
+        当前仓库尚无首个 commit，自动提交会同时确立初始历史。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVM>
+      )>
     ]>
-    <recommendation ?>选择 B；当前整个 workspace 尚未跟踪且没有首个 commit，手动提交更便于一次性审阅迁移边界。</?>
-    <answer { }
-    (
-      <raw-answer ?>B 手动提交。</?>
-      <decision-text ?>实现阶段使用 manual 提交模式，不创建自动 commit 或 Git Notes。</?>
-      <rationale ?>用户明确选择 B；当前 unborn workspace 的提交边界由用户控制。</?>
-      <evidence ?>git rev-parse HEAD 显示当前分支尚无 commit。</?>
-    )
-    >
-  )
-  >
-
-  <decision #migrate_viz_examples.validation_mode {
-    priority = "P0"
-    status = "accepted"
-    blocks = ["track.xml" "implementation"]
-  }
-  (
-    <question ?>最终 phase 使用人工确认还是 Gap Loop？</?>
-    <options { } [
-      <option { key = "D" recommended = true }
-      (
-        <title ?>Gap Loop</?>
-        <description ?>迁移完成后独立对比源行为、目标契约与实际验证结果，发现 gap 时循环修正。</?>
-        <tradeoff ?>会增加一次独立审查和可能的修复轮次。</?>
-      )
-      >
-      <option { key = "C" }
-      (
-        <title ?>人工确认</?>
-        <description ?>完成最终测试后暂停，由用户直接审阅并确认。</?>
-        <tradeoff ?>不会自动进行目标差异复检。</?>
-      )
-      >
+    <recommendation ?01M1W0XR6QXQ50SMXA1XAVXAVN>
+    选择 B；当前整个 workspace 尚未跟踪且没有首个 commit，手动提交更便于一次性审阅迁移边界。
+    </?01M1W0XR6QXQ50SMXA1XAVXAVN>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXAVP>
+      B 手动提交。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVP>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXAVQ>
+      实现阶段使用 manual 提交模式，不创建自动 commit 或 Git Notes。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVQ>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXAVR>
+      用户明确选择 B；当前 unborn workspace 的提交边界由用户控制。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVR>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXAVS>
+      git rev-parse HEAD 显示当前分支尚无 commit。
+      </?01M1W0XR6QXQ50SMXA1XAVXAVS>
+    )>
+  )>
+  <decision #migrate_viz_examples.validation_mode { priority = "P0" status = "accepted" blocks = ["track.xml" "implementation"] } (
+    <question ?01M1W0XR6QXQ50SMXA1XAVXAVT>
+    最终 phase 使用人工确认还是 Gap Loop？
+    </?01M1W0XR6QXQ50SMXA1XAVXAVT>
+    <options {  } [
+      <option { key = "D" recommended = true } (
+        <title ?01M1W0XR6QXQ50SMXA1XAVXAVV>
+        Gap Loop
+        </?01M1W0XR6QXQ50SMXA1XAVXAVV>
+        <description ?01M1W0XR6QXQ50SMXA1XAVXAVW>
+        迁移完成后独立对比源行为、目标契约与实际验证结果，发现 gap 时循环修正。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVW>
+        <tradeoff ?01M1W0XR6QXQ50SMXA1XAVXAVX>
+        会增加一次独立审查和可能的修复轮次。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVX>
+      )>
+      <option { key = "C" } (
+        <title ?01M1W0XR6QXQ50SMXA1XAVXAVY>
+        人工确认
+        </?01M1W0XR6QXQ50SMXA1XAVXAVY>
+        <description ?01M1W0XR6QXQ50SMXA1XAVXAVZ>
+        完成最终测试后暂停，由用户直接审阅并确认。
+        </?01M1W0XR6QXQ50SMXA1XAVXAVZ>
+        <tradeoff ?01M1W0XR6QXQ50SMXA1XAVXAW0>
+        不会自动进行目标差异复检。
+        </?01M1W0XR6QXQ50SMXA1XAVXAW0>
+      )>
     ]>
-    <recommendation ?>选择 D，并仅在最后一个 phase 执行，verify-round 使用默认 false。</?>
-    <answer { }
-    (
-      <raw-answer ?>C 人工确认。</?>
-      <decision-text ?>仅在最终 phase 的 phase:after 挂 cdt:HumanConfirm。</?>
-      <rationale ?>用户明确选择 C；自动检查通过后由用户审阅最终迁移结果。</?>
-      <evidence ?>该迁移跨 server、browser、native ontology 和 Playwright 四层，独立差异复检能覆盖简单测试遗漏。</?>
-    )
-    >
-  )
-  >
+    <recommendation ?01M1W0XR6QXQ50SMXA1XAVXAW1>
+    选择 D，并仅在最后一个 phase 执行，verify-round 使用默认 false。
+    </?01M1W0XR6QXQ50SMXA1XAVXAW1>
+    <answer {  } (
+      <raw-answer ?01M1W0XR6QXQ50SMXA1XAVXAW2>
+      C 人工确认。
+      </?01M1W0XR6QXQ50SMXA1XAVXAW2>
+      <decision-text ?01M1W0XR6QXQ50SMXA1XAVXAW3>
+      仅在最终 phase 的 phase:after 挂 cdt:HumanConfirm。
+      </?01M1W0XR6QXQ50SMXA1XAVXAW3>
+      <rationale ?01M1W0XR6QXQ50SMXA1XAVXAW4>
+      用户明确选择 C；自动检查通过后由用户审阅最终迁移结果。
+      </?01M1W0XR6QXQ50SMXA1XAVXAW4>
+      <evidence ?01M1W0XR6QXQ50SMXA1XAVXAW5>
+      该迁移跨 server、browser、native ontology 和 Playwright 四层，独立差异复检能覆盖简单测试遗漏。
+      </?01M1W0XR6QXQ50SMXA1XAVXAW5>
+    )>
+  )>
 ]>

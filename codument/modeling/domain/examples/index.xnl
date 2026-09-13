@@ -1,4 +1,4 @@
-<module #examples.server { kind = "module" depends_on = ["depa-ontology" "elysia" "@elysiajs/cors"] behaviors = ["behavior://example-viz/requirements/example-server"] } [
+<module #examples.server apiVersion="codument.tech/v1alpha1" { kind = "module" depends_on = ["depa-ontology" "elysia" "@elysiajs/cors"] behaviors = ["behavior://example-viz/requirements/example-server"] } [
   <desc ?01KYFMMXKPR989Q32FXQHMYYJE>
   Bun/Elysia 示例后端：把浏览器请求适配为 depa-ontology 与 CozoDB 调用，不拥有 native binding 或本体运行时实现。
   </?01KYFMMXKPR989Q32FXQHMYYJE>
@@ -19,7 +19,7 @@
   </?01KYFMMXKPR989Q32FXQHMYYJF>
 ]>
 
-<module #examples.browser { kind = "module" depends_on = ["modeling://domain/examples/server" "vue" "vite" "@playwright/test"] behaviors = ["behavior://example-viz/requirements/example-browser" "behavior://example-viz/requirements/browser-e2e"] } [
+<module #examples.browser apiVersion="codument.tech/v1alpha1" { kind = "module" depends_on = ["modeling://domain/examples/server" "vue" "vite" "@playwright/test"] behaviors = ["behavior://example-viz/requirements/example-browser" "behavior://example-viz/requirements/browser-e2e"] } [
   <desc ?01KYFMMXKPR989Q32FXQHMYYJG>
   Vue/Vite 示例展示面及其 Playwright 验收所有者；通过 HTTP API 消费 example-server，不直接加载 native 或 ontology 包。
   </?01KYFMMXKPR989Q32FXQHMYYJG>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plan>
   <metadata>
+    <ApiVersion>codument.tech/v1alpha1</ApiVersion>
     <track_id>add-action-and-constraints</track_id>
     <track_name>为 cozo-om 添加 Action/Mutation 行为层与复合约束引擎</track_name>
     <goal>实现 Action/Mutation 模式、拦截器、三类复合约束、派生属性，并新增审批流 demo</goal>

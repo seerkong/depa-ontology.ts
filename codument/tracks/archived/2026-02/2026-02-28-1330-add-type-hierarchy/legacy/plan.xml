@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plan>
   <metadata>
+    <ApiVersion>codument.tech/v1alpha1</ApiVersion>
     <track_id>add-type-hierarchy</track_id>
     <track_name>为 cozo-om 添加类型继承与多态支持</track_name>
     <goal>实现单继承 + mixin 机制，支持属性/关系继承、多态查询、继承链可视化</goal>

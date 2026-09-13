@@ -1,4 +1,7 @@
 <spec-patch version="1">
+  <Metadata>
+    <ApiVersion>codument.tech/v1alpha1</ApiVersion>
+  </Metadata>
   <requirement op="upsert" selector="spec://cozo-om/requirement/om-024-existential-rule-definition" id="om-024-existential-rule-definition">
     <statement>系统 SHALL 提供 defineExistentialRule(runner, ruleName, spec) 用于声明式定义存在规则，并持久化到存储关系 om_existential_rule_def（rule_name => spec(Json), mode, message, enabled）。规则 spec SHALL 包含 forEach（body：type，可选 where 属性条件列表）与 exists（head：rel、可选 direction、toType）。v1 head 形态 SHALL 仅支持「∃ 关系边 + 目标实体」。mode SHALL 支持 'check'（默认）与 'materialize'。规则中引用的 type/rel/attr 名称 SHALL 经 alias 解析为 canonical 名称。initSchema SHALL 幂等创建 om_existential_rule_def。系统 SHALL 提供 listExistentialRules(runner) 返回全部规则定义。</statement>
     <suite id="definition" name="规则定义与持久化">

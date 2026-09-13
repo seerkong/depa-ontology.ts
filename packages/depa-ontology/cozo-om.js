@@ -8544,6 +8544,173 @@ async function listExistentialRules(runner) {
   return out;
 }
 
+
+const STATUS_LIKE_RE = /^(status|stage|state|phase)$/i;
+
+function _sortProjectionStrings(arr) {
+  return [...arr].sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+async function _listProjectionRelations(runner) {
+  const rows = await runDslRows(
+    runner,
+    query()
+      .select(['rel_name', 'from_type', 'to_type', 'directed'])
+      .fromStored('om_rel_def', {
+        rel_name: dsl.var('rel_name'),
+        from_type: dsl.var('from_type'),
+        to_type: dsl.var('to_type'),
+        directed: dsl.var('directed'),
+      })
+      .order('rel_name')
+  );
+  return rows.map(([relName, fromType, toType, directed]) => ({
+    name: String(relName),
+    fromType: String(fromType),
+    toType: String(toType),
+    directed: !!directed,
+  }));
+}
+
+async function _collectProjectionEnumHints(runner, typeName, attrName) {
+  try {
+    const rows = await runDslRows(
+      runner,
+      query()
+        .select(['value'])
+        .fromStored('om_entity', {
+          id: dsl.var('id'),
+          type_name: param('type', typeName),
+          label: dsl.var('_label'),
+        })
+        .fromStored('om_property', {
+          entity_id: dsl.var('id'),
+          attr_name: param('attr', attrName),
+          value: dsl.var('value'),
+        })
+    );
+    const set = new Set();
+    for (const row of rows) {
+      const v = row[0];
+      if (v === null || v === undefined) continue;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        set.add(String(v));
+      }
+    }
+    return _sortProjectionStrings([...set]);
+  } catch {
+    return [];
+  }
+}
+
+async function _listProjectionBehaviors(runner) {
+  try {
+    const catalog = await getBehaviorCatalog(runner);
+    const behaviors = (catalog && catalog.behaviors) || [];
+    return behaviors
+      .map((b) => ({
+        kind: b.kind,
+        ownerType: b.ownerType,
+        name: b.name,
+        description: b.description == null ? null : b.description,
+      }))
+      .sort((a, b) => {
+        const k = String(a.kind).localeCompare(String(b.kind));
+        if (k) return k;
+        const o = String(a.ownerType).localeCompare(String(b.ownerType));
+        if (o) return o;
+        return String(a.name).localeCompare(String(b.name));
+      });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Export a deterministic OntologyProjection IR from an initialized OM database.
+ * Shape matches Picasso ontology-workbench-pipeline IR ontology-projection.md.
+ *
+ * @param {import('./cozo-om').OmRunner} runner
+ * @param {{
+ *   name?: string,
+ *   includeEnumHintsFromInstances?: boolean,
+ *   extraGaps?: string[],
+ * }} [options]
+ * @returns {Promise<object>}
+ */
+async function exportOntologyProjection(runner, options = {}) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const name = String(opts.name || 'unnamed');
+  const includeEnumHints = opts.includeEnumHintsFromInstances === true;
+  const extraGaps = Array.isArray(opts.extraGaps) ? opts.extraGaps : [];
+
+  const hierarchy = await getTypeHierarchy(runner);
+  const typeNames = _sortProjectionStrings(Object.keys(hierarchy.types || {}));
+
+  const types = [];
+  for (const typeName of typeNames) {
+    const node = hierarchy.types[typeName];
+    const defs = await getAttributeDefinitions(runner, typeName);
+    const attrEntries = [...defs.entries()].sort((a, b) =>
+      String(a[0]).localeCompare(String(b[0]))
+    );
+
+    const attributes = [];
+    for (const [attrName, def] of attrEntries) {
+      const statusLike = STATUS_LIKE_RE.test(attrName);
+      const attr = {
+        name: String(attrName),
+        valueType: def.valueType,
+        required: !!def.required,
+      };
+      if (def.description) attr.description = def.description;
+      if (statusLike) attr.statusLike = true;
+      if (includeEnumHints && statusLike) {
+        const hints = await _collectProjectionEnumHints(runner, typeName, attrName);
+        if (hints.length) attr.enumHints = hints;
+      }
+      attributes.push(attr);
+    }
+
+    const typeEntry = {
+      name: typeName,
+      parentType: node.parentType == null ? null : node.parentType,
+      mixins: Array.isArray(node.mixins) ? [...node.mixins] : [],
+      attributes,
+    };
+    if (node.description) typeEntry.description = node.description;
+    types.push(typeEntry);
+  }
+
+  const relations = await _listProjectionRelations(runner);
+  const behaviors = await _listProjectionBehaviors(runner);
+
+  const gaps = [
+    '角色与权限未进入本投影（需另接 permission / checkAccess 元数据）',
+    '端与部署约束未知（Web/桌面/移动）',
+    ...extraGaps,
+  ];
+  if (!behaviors.length) {
+    gaps.push('BehaviorCatalog 为空或不可读：无 action/mutation/constraint 导出');
+  }
+  const hasStatusLike = types.some((t) => t.attributes.some((a) => a.statusLike));
+  if (hasStatusLike && !includeEnumHints) {
+    gaps.push('statusLike 属性未采样实例枚举（可设 includeEnumHintsFromInstances: true）');
+  }
+
+  return {
+    meta: {
+      source: 'depa-ontology',
+      name,
+      exportedAt: new Date().toISOString(),
+    },
+    types,
+    relations,
+    behaviors,
+    gaps,
+  };
+}
+
 module.exports = {
   createOmRuntime,
   BehaviorUnresolvedError,
@@ -8628,4 +8795,5 @@ module.exports = {
   checkExistentialRules,
   applyExistentialRules,
   clearRegistry,
+  exportOntologyProjection,
 };

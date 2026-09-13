@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plan>
   <metadata>
+    <ApiVersion>codument.tech/v1alpha1</ApiVersion>
     <track_id>add-schema-versioning-permission-integration</track_id>
     <track_name>Schema 版本化 + 本体权限集成（Phase 4）</track_name>
     <goal>实现 schema 版本化/迁移/回滚与 alias 兼容，并新增 viz 两个 top-nav 页面演示本体论+权限（Hybrid ABAC+Path）与 schema 版本化；保持旧 /permission demo 不变</goal>

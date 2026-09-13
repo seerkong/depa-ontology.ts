@@ -18,6 +18,59 @@ export interface TypeHierarchy {
   roots: string[];
 }
 
+
+export interface OntologyProjectionMeta {
+  source: 'depa-ontology';
+  name: string;
+  exportedAt: string;
+}
+
+export interface OntologyProjectionAttribute {
+  name: string;
+  valueType: OmValueType;
+  required: boolean;
+  description?: string;
+  statusLike?: boolean;
+  enumHints?: string[];
+}
+
+export interface OntologyProjectionType {
+  name: string;
+  description?: string;
+  parentType?: string | null;
+  mixins?: string[];
+  attributes: OntologyProjectionAttribute[];
+}
+
+export interface OntologyProjectionRelation {
+  name: string;
+  fromType: string;
+  toType: string;
+  directed: boolean;
+}
+
+export interface OntologyProjectionBehavior {
+  kind: BehaviorCatalogKind;
+  ownerType: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface OntologyProjection {
+  meta: OntologyProjectionMeta;
+  types: OntologyProjectionType[];
+  relations: OntologyProjectionRelation[];
+  behaviors: OntologyProjectionBehavior[];
+  gaps: string[];
+}
+
+export interface ExportOntologyProjectionOptions {
+  name?: string;
+  includeEnumHintsFromInstances?: boolean;
+  extraGaps?: string[];
+}
+
+
 export interface FindByTypeOptions {
   exact?: boolean;
 }
@@ -749,6 +802,10 @@ export function getAncestors(runner: OmRunner, typeName: string): Promise<string
 export function getDescendants(runner: OmRunner, typeName: string): Promise<string[]>;
 export function isSubtypeOf(runner: OmRunner, childType: string, parentType: string): Promise<boolean>;
 export function getTypeHierarchy(runner: OmRunner): Promise<TypeHierarchy>;
+export function exportOntologyProjection(
+  runner: OmRunner,
+  options?: ExportOntologyProjectionOptions
+): Promise<OntologyProjection>;
 export function defineAttribute(
   runner: OmRunner,
   typeName: string,

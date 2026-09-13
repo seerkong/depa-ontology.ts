@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "install:browsers": "playwright install chromium"
+    "install:browsers": "playwright install chromium",
+    "smoke:workshop": "bash scripts/smoke-workshop-apis.sh"
   },
   "dependencies": {
     "@tanstack/vue-table": "^8.21.3",

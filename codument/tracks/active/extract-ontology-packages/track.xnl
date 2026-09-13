@@ -1,0 +1,54 @@
+<Track #extract-ontology-packages version="1" apiVersion="codument.tech/v1alpha1" { status = "in_progress" goal = "提取依赖 depa-cozo 的 Bun DSL 与对象建模包。" description = "用户已明确授权实现与本地验证；npm 发布另行授权。" question_mode = "decision-tree" question_severity = "auto" commit_mode = "manual" created_at = "2026-07-26T15:00:00Z" updated_at = "2026-07-26T19:30:00Z" } (
+  <Ports { scope = "track" } [
+    <MaterialBundle { role = "input" name = "behavior-deltas" domain = "behavior" path = "vfs://./behavior_deltas/" }>
+    <MaterialBundle { role = "input" name = "modeling-deltas" domain = "modeling" path = "vfs://./modeling_deltas/" }>
+    <MaterialBundle { role = "output" name = "behavior" domain = "codument" path = "vfs://@/codument/behaviors/" }>
+    <MaterialBundle { role = "output" name = "modeling" domain = "codument" path = "vfs://@/codument/modeling/" }>
+  ]>
+  <TaskSpace #space_extract_ontology_packages { name = "extract-ontology-packages" } (
+    <Description ?01M1W0XR5N8E38B8X3D5YHYFJ6>
+    完成 Bun 多包边界拆分。
+    </?01M1W0XR5N8E38B8X3D5YHYFJ6>
+    <SubNodes [
+      <TaskGroup #P1 { name = "包边界" status = "DONE" order = 0 } (
+        <Description ?01M1W0XR5N8E38B8X3D5YHYFJ7>
+        拆出 DSL 与 ontology。
+        </?01M1W0XR5N8E38B8X3D5YHYFJ7>
+        <SubNodes [
+          <Task { id = "T1.1" name = "建立工作区和包依赖" status = "DONE" order = 0 }>
+          <Task { id = "T1.2" name = "迁移并过滤底层测试" status = "DONE" order = 1 }>
+        ]>
+      )>
+      <TaskGroup #P2 { name = "验证" status = "DONE" order = 1 } (
+        <Description ?01M1W0XR5N8E38B8X3D5YHYFJ8>
+        安装真实 npm 依赖并执行测试与打包检查。
+        </?01M1W0XR5N8E38B8X3D5YHYFJ8>
+        <SubNodes [
+          <Task { id = "T2.1" name = "运行 Bun 测试" status = "DONE" order = 0 }>
+          <Task { id = "T2.2" name = "检查 npm 包内容" status = "DONE" order = 1 }>
+        ]>
+      )>
+      <TaskGroup #P3 { name = "测试归属迁移" status = "DONE" order = 2 } (
+        <Description ?01M1W0XR5N8E38B8X3D5YHYFJ9>
+        按薄绑定、Datalog 与 ontology 的包边界迁移并运行原有回归测试。
+        </?01M1W0XR5N8E38B8X3D5YHYFJ9>
+        <SubNodes [
+          <Task { id = "T3.1" name = "迁移 DSL 测试" status = "DONE" order = 0 }>
+          <Task { id = "T3.2" name = "验证全部 Bun 测试" status = "DONE" order = 1 } (
+            <Acceptance [
+              <Criterion { id = "T3.2-AC1" checked = true } ?01M1W0XR5N8E38B8X3D5YHYFJA>
+              depa-datalog 的 52 项 DSL 测试和 depa-ontology 的 265 项 OM 测试均通过。
+              </?01M1W0XR5N8E38B8X3D5YHYFJA>
+              <Criterion { id = "T3.2-AC2" checked = true } ?01M1W0XR5N8E38B8X3D5YHYFJB>
+              薄绑定的历史 CozoDb wrapper 契约不回流上层包，并在 depa-cozo 的 16 项 Bun 测试中通过。
+              </?01M1W0XR5N8E38B8X3D5YHYFJB>
+            ]>
+          )>
+        ]>
+      )>
+    ]>
+  )>
+  <Schedule [
+    <Parallel { max_concurrent = 1 spot_check = true }>
+  ]>
+)>

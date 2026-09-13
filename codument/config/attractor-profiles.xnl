@@ -1,0 +1,33 @@
+<AttractorProfiles #codument.config.attractor_profiles apiVersion="codument.tech/v1alpha1" version="1" (
+  <Profiles [
+    <Profile #coding { enabled = true } (
+      <Description ?01M1W0XR5DXH9DSJKF2KQN8TTV>
+      编码方向（DEPA 标准架构吸引子 + 项目工程约束）
+      </?01M1W0XR5DXH9DSJKF2KQN8TTV>
+      <Attractors [
+        <Attractor { ref = "vfs://@/codument/std/attractors/depa-attractor.md" }>
+        <Attractor { ref = "vfs://@/codument/attractors/project.md" }>
+      ]>
+    )>
+    <Profile #docs { enabled = true } (
+      <Description ?01M1W0XR5DXH9DSJKF2KQN8TTW>
+      docs 知识方向（分层晋升 + 分形规范）
+      </?01M1W0XR5DXH9DSJKF2KQN8TTW>
+      <Attractors [
+        <Attractor { ref = "vfs://@/codument/std/attractors/knowledge-tiers.md" }>
+        <Attractor { ref = "vfs://@/codument/std/attractors/model-driven-docs.md" }>
+        <Attractor { ref = "vfs://@/codument/std/skill/docs-modeling-fractal/index.md" }>
+        <Attractor { ref = "vfs://@/codument/std/skill/docs-engineering-fractal/index.md" }>
+        <Attractor { ref = "vfs://@/codument/std/spec/folder-manifest.md" }>
+      ]>
+    )>
+    <Profile #memory { enabled = true } (
+      <Description ?01M1W0XR5DXH9DSJKF2KQN8TTX>
+      长期记忆方向（lessons/incidents/patterns/summaries）
+      </?01M1W0XR5DXH9DSJKF2KQN8TTX>
+      <Attractors [
+        <Attractor { ref = "vfs://@/codument/std/attractors/project-memory.md" }>
+      ]>
+    )>
+  ]>
+)>

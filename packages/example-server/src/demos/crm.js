@@ -37,12 +37,29 @@ async function defineOntology(db) {
   await om.defineAttribute(db, 'SalesRep', 'quota', 'Number', false, '配额');
   await om.defineAttribute(db, 'SalesRep', 'active', 'Bool', false, '是否在职');
 
+  await om.defineType(db, 'Campaign', '获客活动 / 营销战役');
+  await om.defineType(db, 'Product', '可售产品');
+
+  await om.defineAttribute(db, 'Account', 'region', 'String', false, '区域');
+
+  await om.defineAttribute(db, 'Campaign', 'channel', 'String', true, '渠道');
+  await om.defineAttribute(db, 'Campaign', 'budget', 'Number', false, '预算');
+  await om.defineAttribute(db, 'Campaign', 'status', 'String', false, '状态');
+
+  await om.defineAttribute(db, 'Product', 'sku', 'String', true, 'SKU');
+  await om.defineAttribute(db, 'Product', 'list_price', 'Number', true, '标价');
+  await om.defineAttribute(db, 'Product', 'category', 'String', false, '品类');
+
   await om.defineRelation(db, 'has_contact', 'Account', 'Contact', true, '拥有联系人');
   await om.defineRelation(db, 'has_opportunity', 'Account', 'Opportunity', true, '拥有商机');
   await om.defineRelation(db, 'owned_by', 'Opportunity', 'SalesRep', true, '归属销售');
   await om.defineRelation(db, 'has_activity', 'Opportunity', 'Activity', true, '包含活动');
   await om.defineRelation(db, 'assigned_to', 'Lead', 'SalesRep', true, '分配给');
   await om.defineRelation(db, 'converts_to', 'Lead', 'Opportunity', true, '转化为');
+  await om.defineRelation(db, 'belongs_to', 'Lead', 'Account', true, '归属客户');
+  await om.defineRelation(db, 'parent_account', 'Account', 'Account', true, '上级客户');
+  await om.defineRelation(db, 'generated_from', 'Lead', 'Campaign', true, '来自战役');
+  await om.defineRelation(db, 'for_product', 'Opportunity', 'Product', true, '对应产品');
 }
 
 const defaultSheets = {
@@ -54,6 +71,12 @@ const defaultSheets = {
 
       { id: 'acct:acme', typeName: 'Account', label: '先达客户' },
       { id: 'acct:globex', typeName: 'Account', label: '环宇客户' },
+      { id: 'acct:acme-cn', typeName: 'Account', label: '先达华南' },
+
+      { id: 'camp:web', typeName: 'Campaign', label: '官网春季获客' },
+      { id: 'camp:expo', typeName: 'Campaign', label: '制造业博览会' },
+      { id: 'prod:platform', typeName: 'Product', label: '对象工作台平台' },
+      { id: 'prod:analytics', typeName: 'Product', label: '影响分析套件' },
 
       { id: 'ct:alice', typeName: 'Contact', label: 'Alice（采购经理）' },
       { id: 'ct:bob', typeName: 'Contact', label: 'Bob（CTO）' },
@@ -83,9 +106,28 @@ const defaultSheets = {
       { entityId: 'acct:acme', attrName: 'industry', value: '航运物流' },
       { entityId: 'acct:acme', attrName: 'annual_revenue', value: 65000000 },
       { entityId: 'acct:acme', attrName: 'tier', value: 'A' },
+      { entityId: 'acct:acme', attrName: 'region', value: '华东' },
       { entityId: 'acct:globex', attrName: 'industry', value: '智能制造' },
       { entityId: 'acct:globex', attrName: 'annual_revenue', value: 42000000 },
       { entityId: 'acct:globex', attrName: 'tier', value: 'B' },
+      { entityId: 'acct:globex', attrName: 'region', value: '华北' },
+      { entityId: 'acct:acme-cn', attrName: 'industry', value: '航运物流' },
+      { entityId: 'acct:acme-cn', attrName: 'annual_revenue', value: 12000000 },
+      { entityId: 'acct:acme-cn', attrName: 'tier', value: 'B' },
+      { entityId: 'acct:acme-cn', attrName: 'region', value: '华南' },
+
+      { entityId: 'camp:web', attrName: 'channel', value: 'website' },
+      { entityId: 'camp:web', attrName: 'budget', value: 180000 },
+      { entityId: 'camp:web', attrName: 'status', value: 'active' },
+      { entityId: 'camp:expo', attrName: 'channel', value: 'expo' },
+      { entityId: 'camp:expo', attrName: 'budget', value: 95000 },
+      { entityId: 'camp:expo', attrName: 'status', value: 'completed' },
+      { entityId: 'prod:platform', attrName: 'sku', value: 'OM-WB-1' },
+      { entityId: 'prod:platform', attrName: 'list_price', value: 88000 },
+      { entityId: 'prod:platform', attrName: 'category', value: 'platform' },
+      { entityId: 'prod:analytics', attrName: 'sku', value: 'OM-IA-1' },
+      { entityId: 'prod:analytics', attrName: 'list_price', value: 45000 },
+      { entityId: 'prod:analytics', attrName: 'category', value: 'analytics' },
 
       { entityId: 'ct:alice', attrName: 'email', value: 'alice@acme.example' },
       { entityId: 'ct:alice', attrName: 'phone', value: '+86-10-5555-0101' },
@@ -140,6 +182,13 @@ const defaultSheets = {
       { fromId: 'lead:web-ship', relName: 'assigned_to', toId: 'rep:li', props: { since: '2026-02-18' } },
       { fromId: 'lead:expo-mfg', relName: 'assigned_to', toId: 'rep:wang', props: { since: '2026-02-20' } },
       { fromId: 'lead:web-ship', relName: 'converts_to', toId: 'opp:acme-renew', props: { converted_on: '2026-02-25' } },
+      { fromId: 'lead:web-ship', relName: 'belongs_to', toId: 'acct:acme', props: { since: '2026-02-18' } },
+      { fromId: 'lead:expo-mfg', relName: 'belongs_to', toId: 'acct:globex', props: { since: '2026-02-20' } },
+      { fromId: 'lead:web-ship', relName: 'generated_from', toId: 'camp:web', props: {} },
+      { fromId: 'lead:expo-mfg', relName: 'generated_from', toId: 'camp:expo', props: {} },
+      { fromId: 'acct:acme-cn', relName: 'parent_account', toId: 'acct:acme', props: { since: '2025-01-01' } },
+      { fromId: 'opp:acme-renew', relName: 'for_product', toId: 'prod:platform', props: { qty: 1 } },
+      { fromId: 'opp:globex-new', relName: 'for_product', toId: 'prod:analytics', props: { qty: 2 } },
     ],
   },
 };
@@ -155,6 +204,8 @@ const defaultTables = [
       { typeName: 'Opportunity', parent_type: '', mixins: '', description: '销售商机' },
       { typeName: 'Activity', parent_type: '', mixins: '', description: '跟进活动' },
       { typeName: 'SalesRep', parent_type: '', mixins: '', description: '销售代表' },
+      { typeName: 'Campaign', parent_type: '', mixins: '', description: '获客活动 / 营销战役' },
+      { typeName: 'Product', parent_type: '', mixins: '', description: '可售产品' },
     ],
   },
   {
@@ -164,6 +215,7 @@ const defaultTables = [
       { typeName: 'Account', attrName: 'industry', valueType: 'String', required: true, description: '行业' },
       { typeName: 'Account', attrName: 'annual_revenue', valueType: 'Number', required: false, description: '年收入' },
       { typeName: 'Account', attrName: 'tier', valueType: 'String', required: false, description: '客户等级' },
+      { typeName: 'Account', attrName: 'region', valueType: 'String', required: false, description: '区域' },
 
       { typeName: 'Contact', attrName: 'email', valueType: 'String', required: true, description: '邮箱' },
       { typeName: 'Contact', attrName: 'phone', valueType: 'String', required: false, description: '电话' },
@@ -184,6 +236,14 @@ const defaultTables = [
       { typeName: 'SalesRep', attrName: 'region', valueType: 'String', required: true, description: '区域' },
       { typeName: 'SalesRep', attrName: 'quota', valueType: 'Number', required: false, description: '配额' },
       { typeName: 'SalesRep', attrName: 'active', valueType: 'Bool', required: false, description: '是否在职' },
+
+      { typeName: 'Campaign', attrName: 'channel', valueType: 'String', required: true, description: '渠道' },
+      { typeName: 'Campaign', attrName: 'budget', valueType: 'Number', required: false, description: '预算' },
+      { typeName: 'Campaign', attrName: 'status', valueType: 'String', required: false, description: '状态' },
+
+      { typeName: 'Product', attrName: 'sku', valueType: 'String', required: true, description: 'SKU' },
+      { typeName: 'Product', attrName: 'list_price', valueType: 'Number', required: true, description: '标价' },
+      { typeName: 'Product', attrName: 'category', valueType: 'String', required: false, description: '品类' },
     ],
   },
   {
@@ -196,6 +256,10 @@ const defaultTables = [
       { relName: 'has_activity', fromType: 'Opportunity', toType: 'Activity', directed: true, description: '包含活动' },
       { relName: 'assigned_to', fromType: 'Lead', toType: 'SalesRep', directed: true, description: '分配给' },
       { relName: 'converts_to', fromType: 'Lead', toType: 'Opportunity', directed: true, description: '转化为' },
+      { relName: 'belongs_to', fromType: 'Lead', toType: 'Account', directed: true, description: '归属客户' },
+      { relName: 'parent_account', fromType: 'Account', toType: 'Account', directed: true, description: '上级客户' },
+      { relName: 'generated_from', fromType: 'Lead', toType: 'Campaign', directed: true, description: '来自战役' },
+      { relName: 'for_product', fromType: 'Opportunity', toType: 'Product', directed: true, description: '对应产品' },
     ],
   },
   {
@@ -265,7 +329,7 @@ const queries = [
     run: async (db) => {
       const result = await om.impactAnalysis(db, {
         rootId: 'acct:acme',
-        relNames: ['has_opportunity', 'owned_by', 'has_activity', 'has_contact'],
+        relNames: ['has_opportunity', 'owned_by', 'has_activity', 'has_contact', 'parent_account', 'for_product'],
         maxDepth: 3,
         direction: 'outgoing',
       });
@@ -282,7 +346,7 @@ const queries = [
     run: async (db) => {
       const result = await om.ownershipTree(db, {
         rootId: 'acct:acme',
-        ownerRelNames: ['has_contact', 'has_opportunity', 'owned_by', 'has_activity'],
+        ownerRelNames: ['has_contact', 'has_opportunity', 'owned_by', 'has_activity', 'for_product'],
         maxDepth: 3,
       });
       return { view: 'tree', kind: 'template', data: result.data.visual, meta: result.stats };

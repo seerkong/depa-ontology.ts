@@ -1,0 +1,48 @@
+<Behavior #cozo-lib-bun-viz apiVersion="codument.tech/v1alpha1" version="1" (
+  <Requirements [
+    <Requirement #viz-007-governance-integrity-tab (
+      <Statement ?01M1W0XR52CXS2HRYN5CM0YKWW>
+      系统 SHALL 在 /governance 页面新增「完整性检查」子 tab，演示存在规则的违例检测与 Skolem chase 物化：展示规则列表与违例结果，并支持一键执行物化后展示 created 结果与刷新后的违例列表。现有子 tab（数据准备、权限查询）与旧 /permission demo 的行为 SHALL NOT 改变。server 端 SHALL 提供对应 API 端点（列出规则、执行违例检测、执行 chase 物化）。新增能力 SHALL 具备单元测试与 Playwright E2E 覆盖，并通过既有门控命令（bun test、bun test --coverage、codument validate --strict、npm run test:e2e）。
+      </?01M1W0XR52CXS2HRYN5CM0YKWW>
+      <Suites [
+        <Suite #integrity-tab { name = "完整性检查子 tab" } (
+          <Cases [
+            <Case #tab-shows-violations (
+              <Given ?01M1W0XR52CXS2HRYN5CM0YKWX>
+              用户进入 /governance 的「完整性检查」子 tab，演示数据含存在规则违例
+              </?01M1W0XR52CXS2HRYN5CM0YKWX>
+              <When ?01M1W0XR52CXS2HRYN5CM0YKWY>
+              执行违例检测
+              </?01M1W0XR52CXS2HRYN5CM0YKWY>
+              <Then ?01M1W0XR52CXS2HRYN5CM0YKWZ>
+              页面展示规则列表与违例实体列表（含规则名与提示消息）
+              </?01M1W0XR52CXS2HRYN5CM0YKWZ>
+            )>
+            <Case #chase-materializes-and-clears (
+              <Given ?01M1W0XR52CXS2HRYN5CM0YKX0>
+              违例列表非空且存在 materialize 规则
+              </?01M1W0XR52CXS2HRYN5CM0YKX0>
+              <When ?01M1W0XR52CXS2HRYN5CM0YKX1>
+              用户点击一键物化
+              </?01M1W0XR52CXS2HRYN5CM0YKX1>
+              <Then ?01M1W0XR52CXS2HRYN5CM0YKX2>
+              页面展示 created 结果（Skolem 实体与新边），重新检测后对应违例消失
+              </?01M1W0XR52CXS2HRYN5CM0YKX2>
+            )>
+            <Case #existing-tabs-unaffected (
+              <Given ?01M1W0XR52CXS2HRYN5CM0YKX3>
+              用户访问 /governance 的数据准备与权限查询子 tab，以及 /permission 页面
+              </?01M1W0XR52CXS2HRYN5CM0YKX3>
+              <When ?01M1W0XR52CXS2HRYN5CM0YKX4>
+              执行既有交互流程
+              </?01M1W0XR52CXS2HRYN5CM0YKX4>
+              <Then ?01M1W0XR52CXS2HRYN5CM0YKX5>
+              行为与新增「完整性检查」tab 之前一致
+              </?01M1W0XR52CXS2HRYN5CM0YKX5>
+            )>
+          ]>
+        )>
+      ]>
+    )>
+  ]>
+)>

@@ -1,1 +1,1 @@
-<decisions #add_schema_versioning_permission_integration []>
+<decisions #add_schema_versioning_permission_integration apiVersion="codument.tech/v1alpha1" []>

@@ -3,7 +3,10 @@ import { RouterLink, RouterView, useRoute } from "vue-router";
 import { computed } from "vue";
 
 const route = useRoute();
+const isWorkshop = computed(() => route.path.startsWith("/workshop"));
+
 const activePage = computed(() => {
+  if (route.path.startsWith("/workshop")) return "workshop";
   switch (route.path) {
     case "/permission":
       return "permission";
@@ -19,8 +22,16 @@ const activePage = computed(() => {
 </script>
 
 <template>
-  <div class="app">
-    <div class="top-nav">
+  <div class="app" :class="{ workshop: isWorkshop }">
+    <div v-if="!isWorkshop" class="top-nav">
+      <RouterLink
+        to="/workshop"
+        class="nav-btn"
+        :class="{ active: activePage === 'workshop' }"
+        data-testid="nav-workshop"
+      >
+        Workshop
+      </RouterLink>
       <RouterLink
         to="/ontology"
         class="nav-btn"
@@ -55,13 +66,21 @@ const activePage = computed(() => {
       </RouterLink>
     </div>
 
-    <div class="page-wrap">
+    <div class="page-wrap" :class="{ flush: isWorkshop }">
       <RouterView />
     </div>
   </div>
 </template>
 
 <style>
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
 .app {
   width: 100%;
   height: 100%;
@@ -70,6 +89,11 @@ const activePage = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.app.workshop {
+  padding: 0;
+  gap: 0;
 }
 
 .top-nav {
@@ -107,5 +131,9 @@ const activePage = computed(() => {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+
+.page-wrap.flush {
+  overflow: hidden;
 }
 </style>
