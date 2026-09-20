@@ -1770,8 +1770,16 @@ function buildDispatchHandlerMap() {
           }
           return errorResult('INTERNAL', `Unsupported entry: ${entry}`);
         } catch (err) {
+          // 判定走 ontology 的稳定 `code`（`error-surface-contract` mission）。
+          // 库能翻译的错误（重复实体、约束违反…）保留它自己的 code 与结构化字段；
+          // 只有库没翻译的才退回 RUNTIME —— 这样「领域说不行」与「服务崩了」可区分。
           const message = err.display || err.message || String(err);
-          return errorResult('RUNTIME', message);
+          const structural = {};
+          for (const k of ['entityId', 'typeName', 'attrName', 'relName', 'constraintName']) {
+            if (err && err[k] !== undefined) structural[k] = err[k];
+          }
+          const code = err && typeof err.code === 'string' && err.code ? err.code : 'RUNTIME';
+          return errorResult(code, message, Object.keys(structural).length ? structural : undefined);
         }
       };
       handlerMap.set(op.fqn, run);

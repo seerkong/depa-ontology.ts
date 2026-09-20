@@ -38,6 +38,32 @@ function createSerialQueue() {
 
 const withOmRegistryLock = createSerialQueue();
 
+/**
+ * 把一次异常转成 HTTP 错误响应体。
+ *
+ * 背景：`depa-ontology` 的 `error-surface-contract` mission 之前，库抛的错误没有机器可判据
+ * （重复 id 只有 Cozo 的 `transact::assertion_failure`，且 message 是
+ * `"when executing against relation 'om_entity'"`），所以这里只能把 `display` 当字符串吐出去。
+ * 现在库给出稳定的 `code` 与结构化字段，响应体就把它们一并带出。
+ *
+ * **`error` 字段保持字符串**（既有测试断言 `typeof data.error === 'string'`）；
+ * 新增的是并列的结构化字段，因此这个改动是**纯增量**、对老消费者无破坏。
+ *
+ * 引擎词汇（`transact::*`）不出现在响应里 —— 那是 AT1 I5，库侧已翻译干净。
+ */
+function errorResponse(err) {
+  const message = err.display || err.message || String(err);
+  const body = { status: 'error', error: message };
+  if (err && typeof err === 'object' && typeof err.code === 'string' && err.code) {
+    body.code = err.code;
+    // 只带白名单字段，避免把内部结构（如 cause）泄进 HTTP 响应。
+    for (const k of ['entityId', 'typeName', 'attrName', 'relName', 'constraintName', 'version', 'stepKind']) {
+      if (err[k] !== undefined) body[k] = err[k];
+    }
+  }
+  return body;
+}
+
 const TABLE_NAMES = {
   types: '类型定义',
   attributes: '属性定义',
@@ -510,8 +536,7 @@ function createApp(options) {
             table: result.data,
           };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', error: message };
+          return errorResponse(err);
         } finally {
           try { db.close(); } catch (_) { /* ignore */ }
         }
@@ -562,8 +587,7 @@ function createApp(options) {
         const result = await queryDef.run(db, params || {});
         return { status: 'ok', ...(result || {}) };
       } catch (err) {
-        const message = err.display || err.message || String(err);
-        return { status: 'error', error: message };
+        return errorResponse(err);
       } finally {
         try { db.close(); } catch (_) { /* ignore */ }
       }
@@ -731,9 +755,8 @@ function createApp(options) {
           const projection = await getDemoProjection(demoId);
           return { status: 'ok', projection };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          const status = err.status === 404 ? 'error' : 'error';
-          return { status, error: message };
+          // 两分支都是 'error'（原样保留的既有行为，不顺手改语义）。
+          return errorResponse(err);
         }
       })();
     })
@@ -748,8 +771,7 @@ function createApp(options) {
           const entities = await listObjectsByType(demoId, typeName, filter);
           return { status: 'ok', typeName, entities };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', error: message };
+          return errorResponse(err);
         }
       })();
     })
@@ -762,8 +784,7 @@ function createApp(options) {
           const entity = await getObjectDetail(demoId, typeName, entityId);
           return { status: 'ok', entity };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', error: message };
+          return errorResponse(err);
         }
       })();
     })
@@ -781,8 +802,7 @@ function createApp(options) {
           });
           return { status: 'ok', ...graph };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', error: message };
+          return errorResponse(err);
         }
       })();
     })
@@ -799,8 +819,7 @@ function createApp(options) {
           });
           return { status: 'ok', ...tree };
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', error: message };
+          return errorResponse(err);
         }
       })();
     })
@@ -812,8 +831,7 @@ function createApp(options) {
         const operations = listOperations(demoId);
         return { status: 'ok', operations };
       } catch (err) {
-        const message = err.display || err.message || String(err);
-        return { status: 'error', error: message };
+        return errorResponse(err);
       }
     })
 
@@ -825,8 +843,7 @@ function createApp(options) {
         const operation = getOperation(demoId, fqnOrId);
         return { status: 'ok', operation };
       } catch (err) {
-        const message = err.display || err.message || String(err);
-        return { status: 'error', error: message };
+        return errorResponse(err);
       }
     })
 
@@ -837,8 +854,11 @@ function createApp(options) {
         try {
           return await invokeOperation(demoId, body || {});
         } catch (err) {
-          const message = err.display || err.message || String(err);
-          return { status: 'error', ok: false, error: { code: 'RUNTIME', message } };
+          // invoke 的响应形状与只读路由**不同**（`error` 是嵌套对象而非字符串），
+          // 这是既有的公开契约，前端 `data.error.code` 依赖它 —— 不改成扁平。
+          // 内层的 `code` 已由 operations.js 的分派层按 ontology 的稳定 code 填好
+          // （见那边 catch 里的说明），这里只做最后的兜底。
+          return { status: 'error', ok: false, error: { code: 'RUNTIME', message: err.display || err.message || String(err) } };
         }
       })();
     });

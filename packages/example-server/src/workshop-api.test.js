@@ -103,3 +103,53 @@ test('workshop API: unknown demo projection returns error payload', async () => 
     close();
   }
 });
+
+/**
+ * 结构化错误响应（ontolib mission `error-surface-contract`）。
+ *
+ * 库现在给出稳定的 `code` 与结构化字段，HTTP 层把它们一并带出。
+ * 关键不变式：`error` 字段**仍是字符串**（既有消费者依赖），新增字段是纯增量。
+ */
+test('read routes expose the ontology error code alongside the legacy string', async () => {
+  const { app, close } = createApp();
+  try {
+    const bad = await requestJson(app, 'GET', '/api/demos/no-such-demo/projection');
+    expect(bad.data.status).toBe('error');
+    // 旧契约不变
+    expect(typeof bad.data.error).toBe('string');
+    expect(bad.data.error.length).toBeGreaterThan(0);
+    // 老消费者只读 error；新消费者可读 code（未知 demo 不是库错误，故可不带 code）—— 
+    // 这里只断言形状不冲突。
+    if (bad.data.code !== undefined) expect(typeof bad.data.code).toBe('string');
+  } finally {
+    close();
+  }
+});
+
+test('invoke surfaces a duplicate-entity conflict as a structured code, not RUNTIME', async () => {
+  const { app, close } = createApp();
+  try {
+    const leadId = 'lead:dup-' + Date.now();
+    const env = {
+      fqn: 'ontology.crm.op.CreateLead',
+      input: { id: leadId, label: '重复线索', company: 'Dup Co', source: 'test' },
+    };
+    const first = await requestJson(app, 'POST', '/api/demos/crm/invoke', env);
+    expect(first.data.status).toBe('ok');
+
+    // 同一 id 再建一次 → 库抛 EntityAlreadyExistsError，HTTP 层应把它的 code 带出来。
+    const dup = await requestJson(app, 'POST', '/api/demos/crm/invoke', env);
+    expect(dup.data.status).toBe('error');
+    expect(dup.data.ok).toBe(false);
+    // invoke 的响应形状是嵌套 error 对象（既有公开契约，前端依赖 data.error.code）
+    expect(typeof dup.data.error).toBe('object');
+    expect(dup.data.error.code).toBe('ENTITY_ALREADY_EXISTS');
+    // 结构化字段在 details 里（errorResult 的既有形状）—— 前端不必解析消息
+    expect(dup.data.error.details.entityId).toBe(leadId);
+    // AT1 I2/I5：消息自带上下文，且不含引擎词汇
+    expect(dup.data.error.message).not.toContain('transact::');
+    expect(dup.data.error.message).not.toContain('when executing against relation');
+  } finally {
+    close();
+  }
+});
