@@ -59,3 +59,6 @@ codument/.local/
 # Workshop persisted Cozo DBs
 .data/
 packages/example-server/.data/
+
+# cdmt-mission-lite 工作目录（与 Picasso / my-workbench 的约定一致）
+.cdmt-lite/

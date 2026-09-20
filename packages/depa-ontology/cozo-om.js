@@ -260,6 +260,154 @@ class BehaviorRegistryPublicationConflictError extends Error {
   }
 }
 
+// ── 错误契约（Error Contract）────────────────────────────────────────────────
+//
+// 设计约束见 `codument`-free 的 mission 载体：
+//   .cdmt-lite/missions/active/error-surface-contract/attractors/error-contract.md
+//
+// 三条不变量（改动这些类之前先读）：
+//   I1  code 是契约、message 不是 —— 调用方只许判 `code`，不许匹配消息措辞
+//   I2  message 自带上下文 —— 只看 message 必须能定位到具体对象（id / 类型 / 操作）
+//   I3  翻译不销毁证据 —— 原始错误必须进 `cause`，底层 `display` 一并保留
+//   I5  不泄漏引擎词汇 —— Cozo 的 `transact::*` 只作内部判据，不得成为公开 `code`
+//
+// 命名风格（`SCREAMING_SNAKE`、不加前缀）由下游既成事实决定，不是本库发明：
+//   `example-server` 与 `software-factory-workbench` 在没有任何库级约定的情况下，
+//   各自手写出了 `ENTITY_NOT_FOUND` / `TYPE_MISMATCH`。本组类是把这个约定**从调用方
+//   上移到库**，让它们能删掉自己那份手写判定，且 code 不变（无破坏）。
+//
+// 与既有的 Behavior*Error 类的关系：那三个**没有 `code` 字段**，本期不动它们
+// （避免改变既有 `instanceof` 结果）。新基类与它们并列，不统一继承链。
+
+/** 本库所有「可预期的失败」的基类。编程错误仍用 TypeError，不归此列。 */
+class OmError extends Error {
+  constructor(message, { code, cause, ...details } = {}) {
+    super(message, cause !== undefined ? { cause } : undefined);
+    this.name = new.target.name;
+    if (code !== undefined) this.code = code;
+    // 诊断字段冻结，避免调用方误改后排查失真（对齐 BehaviorUnresolvedError 的写法）。
+    Object.assign(this, details);
+  }
+}
+
+/**
+ * 实体已存在。`createEntity` 撞主键时抛。
+ *
+ * 为什么值得一个专门的类：这是最常见的失败，而底层的 message 是
+ * `"when executing against relation 'om_entity'"` —— 不含 id、不含类型、不含操作。
+ */
+class EntityAlreadyExistsError extends OmError {
+  constructor(entityId, typeName, cause) {
+    super(`Entity '${entityId}' of type '${typeName}' already exists`, {
+      code: 'ENTITY_ALREADY_EXISTS',
+      cause,
+      entityId,
+      typeName,
+    });
+  }
+}
+
+/** 实体不存在。 */
+class EntityNotFoundError extends OmError {
+  constructor(entityId, cause) {
+    super(`Entity '${entityId}' does not exist`, {
+      code: 'ENTITY_NOT_FOUND', cause, entityId,
+    });
+  }
+}
+
+/** 类型未定义或解析失败。 */
+class TypeNotFoundError extends OmError {
+  constructor(typeName, cause) {
+    super(`Type '${typeName}' does not exist`, {
+      code: 'TYPE_NOT_FOUND', cause, typeName,
+    });
+  }
+}
+
+/** 属性未在该类型上定义。 */
+class AttributeNotDefinedError extends OmError {
+  constructor(typeName, attrName, cause) {
+    super(`Attribute '${attrName}' is not defined for type '${typeName}'`, {
+      code: 'ATTRIBUTE_NOT_DEFINED', cause, typeName, attrName,
+    });
+  }
+}
+
+/** 关系未定义。 */
+class RelationNotDefinedError extends OmError {
+  constructor(relName, cause) {
+    super(`Relation '${relName}' is not defined`, {
+      code: 'RELATION_NOT_DEFINED', cause, relName,
+    });
+  }
+}
+
+/**
+ * 用法可预期地不合法，但调用方有理由处理（如缺字段、取值超范围）。
+ *
+ * 与 `TypeError` 的边界：`TypeError` 表达「调用方编程错误」（传了非函数），不该被 catch；
+ * 本类表达「输入不合法但属于正常业务分支」。逐个判定，宁可少升。
+ */
+class OmUsageError extends OmError {
+  constructor(message, { code = 'INVALID_USAGE', cause, ...details } = {}) {
+    super(message, { code, cause, ...details });
+  }
+}
+
+/** schema 版本 / 快照不一致。 */
+class SchemaVersionError extends OmError {
+  constructor(message, { code = 'SCHEMA_VERSION_MISMATCH', cause, ...details } = {}) {
+    super(message, { code, cause, ...details });
+  }
+}
+
+/** 迁移步骤非法。 */
+class MigrationStepError extends OmError {
+  constructor(message, { code = 'UNSUPPORTED_MIGRATION_STEP', cause, ...details } = {}) {
+    super(message, { code, cause, ...details });
+  }
+}
+
+/**
+ * 领域约束被违反。调用方**据约束名分支**，而不是去匹配消息文本。
+ *
+ * 消息形态保持原样（`Constraint '<name>' violated: <message>`）——既有测试与下游都在断言它；
+ * 新增的是 `code` 与 `constraint` 字段，让判定不再依赖措辞。
+ */
+class ConstraintViolationError extends OmError {
+  constructor(constraintName, fullMessage) {
+    // message 原样透传 validateConstraints 的措辞，**不改写、不重组**——
+    // 既有测试与下游断言的是它，且详情（约束自己的 message）就在里面。
+    super(fullMessage, { code: 'CONSTRAINT_VIOLATED', constraintName });
+  }
+}
+
+/**
+ * 从 validateConstraints 的 errors 数组里取出第一个约束名。
+ *
+ * errors 是纯字符串数组（既有测试断言 `errors.join()`，不能改结构）。
+ * 判定用的名字在这里解析一次，之后调用方靠 `code` + `constraintName` 分支。
+ */
+function _firstConstraintName(errors) {
+  for (const e of errors || []) {
+    const m = /^Constraint '([^']+)'/.exec(String(e));
+    if (m) return m[1];
+  }
+  return 'unknown';
+}
+
+/**
+ * 底层 Cozo 断言失败？（重复主键等）
+ *
+ * 只认 `code`，**不匹配 message** —— 实测 message 是无信息量的
+ * `"when executing against relation 'om_entity'"`，匹配它等于把 Cozo 的措辞当契约。
+ * 本函数是 `I5 不泄漏引擎词汇` 的落点：引擎码只在此处出现，不出现在任何公开 `code`。
+ */
+function isAssertionFailure(err) {
+  return Boolean(err) && err.code === 'transact::assertion_failure';
+}
+
 function _ordinalCompare(left, right) {
   const a = String(left);
   const b = String(right);
@@ -2066,8 +2214,8 @@ async function _runDslCreateIgnoreConflict(runner, builder) {
 async function _hasNamedFields(runner, relationName, fieldNames) {
   const rel = String(relationName || '').trim();
   const names = Array.isArray(fieldNames) ? fieldNames.map((n) => String(n || '').trim()).filter(Boolean) : [];
-  if (!rel) throw new Error('relationName is required');
-  if (!names.length) throw new Error('fieldNames must be a non-empty array');
+  if (!rel) throw new OmUsageError('relationName is required');
+  if (!names.length) throw new OmUsageError('fieldNames must be a non-empty array');
 
   // Avoid sys ops (e.g. ::columns) so this works in multiTransact runners.
   const fields = names.join(', ');
@@ -2173,10 +2321,10 @@ function _normalizeValidityInput(value) {
 
 async function _ensureBehaviorTypeExists(runner, typeName) {
   const name = String(typeName || '').trim();
-  if (!name) throw new Error('Type name is required');
+  if (!name) throw new OmUsageError('Type name is required');
   const isType = await _typeExists(runner, name);
   if (isType) return;
-  throw new Error(`Type '${name}' does not exist`);
+  throw new TypeNotFoundError(name);
 }
 
 async function _resolveByAncestors(runner, typeName, lookupFn) {
@@ -2258,7 +2406,7 @@ function _normalizeConstraintType(scope) {
   if (s === 'cross-entity' || s === 'cross_entity') return 'cross-entity';
   if (s === 'computed-dep' || s === 'computed_dep') return 'computed-dep';
   if (s === 'custom') return 'custom';
-  throw new Error(`Unsupported constraint scope '${scope}'`);
+  throw new OmUsageError(`Unsupported constraint scope '${scope}'`);
 }
 
 /**
@@ -2273,10 +2421,10 @@ async function defineConstraint(runtime, typeName, constraintName, def) {
   _requireRegistrationRuntime(runtime, 'defineConstraint');
   const tn = String(typeName || '').trim();
   const cn = String(constraintName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!cn) throw new Error('Constraint name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!cn) throw new OmUsageError('Constraint name is required');
   if (!def || typeof def !== 'object') {
-    throw new Error('Constraint definition must be an object');
+    throw new OmUsageError('Constraint definition must be an object');
   }
 
   const constraintType = _normalizeConstraintType(def.scope);
@@ -2308,8 +2456,8 @@ async function defineComputed(runtime, typeName, attrName, description = '') {
   _requireRegistrationRuntime(runtime, 'defineComputed');
   const tn = String(typeName || '').trim();
   const an = String(attrName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Attribute name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Attribute name is required');
 
   await _ensureBehaviorTypeExists(runtime, tn);
 
@@ -2328,8 +2476,8 @@ async function defineComputed(runtime, typeName, attrName, description = '') {
 async function _resolveComputedDef(runner, typeName, attrName) {
   const tn = String(typeName || '').trim();
   const an = String(attrName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Attribute name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Attribute name is required');
 
   return _resolveByAncestors(
     runner,
@@ -2343,7 +2491,7 @@ async function _resolveComputedDef(runner, typeName, attrName) {
 
 async function _getComputedMapForType(runner, typeName) {
   const tn = String(typeName || '').trim();
-  if (!tn) throw new Error('Type name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
   const ancestors = await _getAncestorList(runner, tn);
   const chain = [...ancestors].reverse();
   const registry = _registrySnapshotOf(runner).computed;
@@ -2368,7 +2516,7 @@ async function _getComputedMapForType(runner, typeName) {
 async function _listEffectiveComputedDefinitions(runner, typeName) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const tn = String(typeName || '').trim();
-  if (!tn) throw new Error('Type name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
   const ancestors = await _getAncestorList(scope, tn);
   const chain = [...ancestors].reverse();
   const merged = new Map();
@@ -2389,8 +2537,8 @@ async function _resolveComputedCallback(runner, typeName, attrName) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const tn = String(typeName || '').trim();
   const an = String(attrName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Attribute name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Attribute name is required');
   const canonicalAttrName = await _resolveAttrForCanonicalType(scope, tn, an);
   for (const definition of await _listEffectiveComputedDefinitions(scope, tn)) {
     const definitionAttrName = await _resolveAttrForCanonicalType(
@@ -2418,7 +2566,7 @@ async function _resolveComputedCallback(runner, typeName, attrName) {
 async function validateConstraints(runner, entityId, options) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const id = String(entityId || '').trim();
-  if (!id) throw new Error('entityId is required');
+  if (!id) throw new OmUsageError('entityId is required');
 
   const wantedTypes = options && Array.isArray(options.types) ? options.types : null;
   const wantedSet = wantedTypes ? new Set(wantedTypes.map((t) => String(t))) : null;
@@ -2561,8 +2709,8 @@ async function defineMutation(runtime, typeName, mutationName, description = '')
   _requireRegistrationRuntime(runtime, 'defineMutation');
   const tn = String(typeName || '').trim();
   const mn = String(mutationName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!mn) throw new Error('Mutation name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!mn) throw new OmUsageError('Mutation name is required');
 
   await _ensureBehaviorTypeExists(runtime, tn);
 
@@ -2583,8 +2731,8 @@ async function defineAction(runtime, typeName, actionName, description = '') {
   _requireRegistrationRuntime(runtime, 'defineAction');
   const tn = String(typeName || '').trim();
   const an = String(actionName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Action name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   await _ensureBehaviorTypeExists(runtime, tn);
 
@@ -2604,8 +2752,8 @@ async function _resolveActionDef(runner, typeName, actionName) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const tn = String(typeName || '').trim();
   const an = String(actionName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Action name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   const chain = [tn, ...(await _getAncestorList(scope, tn))];
   for (const ownerType of chain) {
@@ -2621,7 +2769,7 @@ async function _resolveActionDef(runner, typeName, actionName) {
 
 async function callParentAction(ctx, actionName, params) {
   if (!ctx || typeof ctx !== 'object') {
-    throw new Error('Action context is required');
+    throw new OmUsageError('Action context is required');
   }
   const scope = ctx[_BEHAVIOR_SCOPE] || await _captureBehaviorResolutionScope(ctx.runner);
   const runner = scope.runner;
@@ -2630,16 +2778,16 @@ async function callParentAction(ctx, actionName, params) {
   const currentOwnerType = String(ctx.actionOwnerType || ctx.typeName || '').trim();
   const an = String(actionName || '').trim();
   if (!runner || typeof runner.run !== 'function') {
-    throw new Error('Action context runner is required');
+    throw new OmUsageError('Action context runner is required');
   }
-  if (!entityId) throw new Error('Action context entityId is required');
-  if (!entityTypeName) throw new Error('Action context typeName is required');
-  if (!currentOwnerType) throw new Error('Action context actionOwnerType is required');
-  if (!an) throw new Error('Action name is required');
+  if (!entityId) throw new OmUsageError('Action context entityId is required');
+  if (!entityTypeName) throw new OmUsageError('Action context typeName is required');
+  if (!currentOwnerType) throw new OmUsageError('Action context actionOwnerType is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   const parentType = await _getParentType(scope, currentOwnerType);
   if (!parentType) {
-    throw new Error(`Action '${an}' has no parent action (type '${currentOwnerType}' has no parentType)`);
+    throw new OmUsageError(`Action '${an}' has no parent action (type '${currentOwnerType}' has no parentType)`);
   }
 
   const chain = [parentType, ...(await _getAncestorList(scope, parentType))];
@@ -2656,7 +2804,7 @@ async function callParentAction(ctx, actionName, params) {
     }
   }
   if (!parentDef) {
-    throw new Error(`Parent action '${an}' not defined for type '${currentOwnerType}'`);
+    throw new OmUsageError(`Parent action '${an}' not defined for type '${currentOwnerType}'`);
   }
 
   const base = {
@@ -2681,7 +2829,7 @@ async function callParentAction(ctx, actionName, params) {
   const mutations = await parentDef.handler(nextCtx, nextCtx.params);
   const list = mutations == null ? [] : mutations;
   if (!Array.isArray(list)) {
-    throw new Error(`Action '${an}' must return an array of mutations`);
+    throw new OmUsageError(`Action '${an}' must return an array of mutations`);
   }
   return list;
 }
@@ -2689,7 +2837,7 @@ async function callParentAction(ctx, actionName, params) {
 function _normalizeInterceptorPhase(phase) {
   const p = String(phase || '').trim().toLowerCase();
   if (p !== 'before' && p !== 'after') {
-    throw new Error("Interceptor phase must be 'before' or 'after'");
+    throw new OmUsageError("Interceptor phase must be 'before' or 'after'");
   }
   return p;
 }
@@ -2706,13 +2854,13 @@ function _normalizeInterceptorPhase(phase) {
 async function defineInterceptor(runtime, typeName, actionName, phase, handler, description = '') {
   _requireRegistrationRuntime(runtime, 'defineInterceptor');
   if (typeof handler !== 'function') {
-    throw new Error('Interceptor handler must be a function');
+    throw new OmUsageError('Interceptor handler must be a function');
   }
   const tn = String(typeName || '').trim();
   const an = String(actionName || '').trim();
   const ph = _normalizeInterceptorPhase(phase);
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Action name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   await _ensureBehaviorTypeExists(runtime, tn);
 
@@ -2775,8 +2923,8 @@ async function _collectInterceptors(runner, entityTypeName, actionName) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const tn = String(entityTypeName || '').trim();
   const an = String(actionName || '').trim();
-  if (!tn) throw new Error('Type name is required');
-  if (!an) throw new Error('Action name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   // Apply ancestor interceptors first.
   const chain = [tn, ...(await _getAncestorList(scope, tn))].reverse();
@@ -2825,8 +2973,8 @@ async function executeAction(db, entityId, actionName, params) {
 
   const id = String(entityId || '').trim();
   const an = String(actionName || '').trim();
-  if (!id) throw new Error('entityId is required');
-  if (!an) throw new Error('Action name is required');
+  if (!id) throw new OmUsageError('entityId is required');
+  if (!an) throw new OmUsageError('Action name is required');
 
   const tx = rawDb.multiTransact(true);
   const txScope = _scopeWithRunner(scope, tx);
@@ -2834,7 +2982,7 @@ async function executeAction(db, entityId, actionName, params) {
     const typeName = await getEntityType(txScope, id);
     const def = await _resolveActionDef(txScope, typeName, an);
     if (!def) {
-      throw new Error(`Action '${an}' not defined for type '${typeName}'`);
+      throw new OmUsageError(`Action '${an}' not defined for type '${typeName}'`);
     }
     const interceptors = await _collectInterceptors(txScope, typeName, an);
 
@@ -2870,7 +3018,7 @@ async function executeAction(db, entityId, actionName, params) {
     const mutations = await def.handler(ctx, ctx.params);
     const list = mutations == null ? [] : mutations;
     if (!Array.isArray(list)) {
-      throw new Error(`Action '${an}' must return an array of mutations`);
+      throw new OmUsageError(`Action '${an}' must return an array of mutations`);
     }
 
     await _executeMutationsInRunner(txScope, id, list);
@@ -2892,7 +3040,7 @@ async function _executeMutationsInRunner(runner, entityId, mutations) {
   const scope = await _captureBehaviorResolutionScope(runner);
   const list = Array.isArray(mutations) ? mutations : [];
   const id = String(entityId || '').trim();
-  if (!id) throw new Error('entityId is required');
+  if (!id) throw new OmUsageError('entityId is required');
 
   const typeName = await getEntityType(scope, id);
 
@@ -2920,7 +3068,7 @@ async function _executeMutationsInRunner(runner, entityId, mutations) {
   for (const item of list) {
     const mutation = item && typeof item === 'object' ? String(item.mutation || '').trim() : '';
     const paramsObj = item && typeof item === 'object' ? (item.params || {}) : {};
-    if (!mutation) throw new Error('Mutation item missing mutation name');
+    if (!mutation) throw new OmUsageError('Mutation item missing mutation name');
 
     const chain = [typeName, ...(await _getAncestorList(scope, typeName))];
     let resolved = null;
@@ -2936,7 +3084,7 @@ async function _executeMutationsInRunner(runner, entityId, mutations) {
       }
     }
     if (!resolved) {
-      throw new Error(`Mutation '${mutation}' not defined for type '${typeName}'`);
+      throw new OmUsageError(`Mutation '${mutation}' not defined for type '${typeName}'`);
     }
     resolvedMutations.push({ executor: resolved.executor, params: paramsObj });
   }
@@ -3347,7 +3495,7 @@ function _evaluateAbacOp(op, leftValue, rightValue) {
     return x <= y;
   }
 
-  throw new Error(`Unsupported ABAC op '${o}'`);
+  throw new OmUsageError(`Unsupported ABAC op '${o}'`);
 }
 
 async function _getOutgoingNeighborsForPerm(runner, fromId, relName, asOf) {
@@ -3431,9 +3579,9 @@ async function checkAccess(runner, input) {
   const asOfRaw = hasAsOf ? String(payload.asOf || '').trim() : '';
   const asOf = asOfRaw ? _normalizeAsOfTimestamp(asOfRaw, 'asOf') : null;
 
-  if (!subjectId) throw new Error('subjectId is required');
-  if (!action) throw new Error('action is required');
-  if (!resourceId) throw new Error('resourceId is required');
+  if (!subjectId) throw new OmUsageError('subjectId is required');
+  if (!action) throw new OmUsageError('action is required');
+  if (!resourceId) throw new OmUsageError('resourceId is required');
 
   const explanation = {
     input: { subjectId, action, resourceId, ...(asOf ? { asOf } : {}) },
@@ -3742,7 +3890,7 @@ async function getSchemaState(runner) {
       .limit(1)
   );
   if (!rows.length) {
-    throw new Error("Schema state not initialized (missing om_schema_state row id='default'); call initSchema(runner) first");
+    throw new OmUsageError("Schema state not initialized (missing om_schema_state row id='default'); call initSchema(runner) first");
   }
   const [currentVersion, checksum] = rows[0];
   return { currentVersion, checksum };
@@ -3839,9 +3987,7 @@ async function _preflightAttributeValueTypeChange(runner, canonicalTypeName, can
     const samples = bad
       .map((x) => `${String(x.entityId)}=${typeof x.value === 'string' ? JSON.stringify(x.value) : String(x.value)}`)
       .join(', ');
-    throw new Error(
-      `Incompatible valueType change for ${canonicalTypeName}.${canonicalAttrName}: cannot convert existing values to ${nextValueType} (samples: ${samples})`
-    );
+    throw new OmUsageError(`Incompatible valueType change for ${canonicalTypeName}.${canonicalAttrName}: cannot convert existing values to ${nextValueType} (samples: ${samples})`);
   }
 }
 
@@ -4304,7 +4450,7 @@ function _diffByKey(fromItems, toItems, keyFields) {
   const fromList = Array.isArray(fromItems) ? fromItems : [];
   const toList = Array.isArray(toItems) ? toItems : [];
   const keys = Array.isArray(keyFields) ? keyFields : [];
-  if (!keys.length) throw new Error('diff requires non-empty keyFields');
+  if (!keys.length) throw new OmUsageError('diff requires non-empty keyFields');
 
   const keyString = (obj) => keys.map((k) => String(obj[k] ?? '')).join('\u0001');
 
@@ -4671,7 +4817,7 @@ function _normalizeLegacyBehaviorPolicy(options) {
   const policy = options.legacyBehaviorPolicy;
   if (policy == null || policy === '') return null;
   if (policy === 'preserve' || policy === 'clear') return policy;
-  throw new Error("legacyBehaviorPolicy must be either 'preserve' or 'clear'");
+  throw new OmUsageError("legacyBehaviorPolicy must be either 'preserve' or 'clear'");
 }
 
 function _behaviorSnapshotSectionRows(section, side = 'target') {
@@ -4715,7 +4861,7 @@ async function _replaceBehaviorSnapshotRows(runner, behavior) {
 
 async function readSchemaSnapshot(runner, version) {
   const v = Number(version);
-  if (!Number.isFinite(v) || v <= 0) throw new Error('version must be a positive number');
+  if (!Number.isFinite(v) || v <= 0) throw new OmUsageError('version must be a positive number');
 
   const rows = await runDslRows(
     runner,
@@ -4728,7 +4874,7 @@ async function readSchemaSnapshot(runner, version) {
       .limit(1)
   ).catch((e) => {
     if (_isStoredRelationMissingError(e)) {
-      throw new Error("Schema snapshots not initialized (missing om_schema_snapshot); call initSchema(runner) first");
+      throw new OmUsageError("Schema snapshots not initialized (missing om_schema_snapshot); call initSchema(runner) first");
     }
     throw e;
   });
@@ -4742,16 +4888,16 @@ async function readSchemaSnapshot(runner, version) {
     try {
       return JSON.parse(s);
     } catch (e) {
-      throw new Error(`Invalid snapshot_json for version ${v}: expected JSON string`);
+      throw new SchemaVersionError(`Invalid snapshot_json for version ${v}: expected JSON string`, { code: 'INVALID_SNAPSHOT_JSON', version: v });
     }
   }
   if (typeof raw === 'object') return raw;
-  throw new Error(`Invalid snapshot_json for version ${v}: expected JSON object or string`);
+  throw new SchemaVersionError(`Invalid snapshot_json for version ${v}: expected JSON object or string`, { code: 'INVALID_SNAPSHOT_JSON', version: v });
 }
 
 async function writeSchemaSnapshot(runner, version, options) {
   const v = Number(version);
-  if (!Number.isFinite(v) || v <= 0) throw new Error('version must be a positive number');
+  if (!Number.isFinite(v) || v <= 0) throw new OmUsageError('version must be a positive number');
 
   const opts = options && typeof options === 'object' ? options : {};
   const ensureCurrent = opts.ensureCurrent !== false;
@@ -4782,7 +4928,7 @@ async function writeSchemaSnapshot(runner, version, options) {
       .put('om_schema_snapshot', ['version'], ['snapshot_json'])
   ).catch((e) => {
     if (_isStoredRelationMissingError(e)) {
-      throw new Error("Schema snapshots not initialized (missing om_schema_snapshot); call initSchema(runner) first");
+      throw new OmUsageError("Schema snapshots not initialized (missing om_schema_snapshot); call initSchema(runner) first");
     }
     throw e;
   });
@@ -4791,8 +4937,8 @@ async function writeSchemaSnapshot(runner, version, options) {
 }
 
 function _diffSchemaSnapshots(fromSnapshot, toSnapshot) {
-  if (!fromSnapshot || typeof fromSnapshot !== 'object') throw new Error('fromSnapshot must be an object');
-  if (!toSnapshot || typeof toSnapshot !== 'object') throw new Error('toSnapshot must be an object');
+  if (!fromSnapshot || typeof fromSnapshot !== 'object') throw new OmUsageError('fromSnapshot must be an object');
+  if (!toSnapshot || typeof toSnapshot !== 'object') throw new OmUsageError('toSnapshot must be an object');
 
   const fromSchema = (fromSnapshot.schema && typeof fromSnapshot.schema === 'object') ? fromSnapshot.schema : {};
   const toSchema = (toSnapshot.schema && typeof toSnapshot.schema === 'object') ? toSnapshot.schema : {};
@@ -4896,8 +5042,8 @@ function _diffSchemaSnapshots(fromSnapshot, toSnapshot) {
 async function diffSchemaVersions(runner, fromVersion, toVersion) {
   const fv = Number(fromVersion);
   const tv = Number(toVersion);
-  if (!Number.isFinite(fv) || fv <= 0) throw new Error('fromVersion must be a positive number');
-  if (!Number.isFinite(tv) || tv <= 0) throw new Error('toVersion must be a positive number');
+  if (!Number.isFinite(fv) || fv <= 0) throw new OmUsageError('fromVersion must be a positive number');
+  if (!Number.isFinite(tv) || tv <= 0) throw new OmUsageError('toVersion must be a positive number');
 
   let fromSnap = await readSchemaSnapshot(runner, fv);
   let toSnap = await readSchemaSnapshot(runner, tv);
@@ -4910,9 +5056,10 @@ async function diffSchemaVersions(runner, fromVersion, toVersion) {
       if (fv === currentVersion) {
         fromSnap = await writeSchemaSnapshot(runner, fv, { ensureCurrent: true });
       } else {
-        throw new Error(
+        throw new SchemaVersionError(
           `Missing schema snapshot for version=${fv}. ` +
-          `Can only auto-write snapshot for currentVersion=${state.currentVersion}.`
+          `Can only auto-write snapshot for currentVersion=${state.currentVersion}.`,
+          { code: 'MISSING_SNAPSHOT', version: fv }
         );
       }
     }
@@ -4920,16 +5067,17 @@ async function diffSchemaVersions(runner, fromVersion, toVersion) {
       if (tv === currentVersion) {
         toSnap = await writeSchemaSnapshot(runner, tv, { ensureCurrent: true });
       } else {
-        throw new Error(
+        throw new SchemaVersionError(
           `Missing schema snapshot for version=${tv}. ` +
-          `Can only auto-write snapshot for currentVersion=${state.currentVersion}.`
+          `Can only auto-write snapshot for currentVersion=${state.currentVersion}.`,
+          { code: 'MISSING_SNAPSHOT', version: tv }
         );
       }
     }
   }
 
-  if (!fromSnap) throw new Error(`Missing schema snapshot for version=${fv}`);
-  if (!toSnap) throw new Error(`Missing schema snapshot for version=${tv}`);
+  if (!fromSnap) throw new SchemaVersionError(`Missing schema snapshot for version=${fv}`, { code: 'MISSING_SNAPSHOT', version: fv });
+  if (!toSnap) throw new SchemaVersionError(`Missing schema snapshot for version=${tv}`, { code: 'MISSING_SNAPSHOT', version: tv });
 
   return _diffSchemaSnapshots(fromSnap, toSnap);
 }
@@ -4941,15 +5089,15 @@ function _computeSchemaChecksum(snapshotJsonValue) {
 
 async function applySchemaMigration(runner, spec) {
   const { migrationId, fromVersion, toVersion, strict, label, description, steps } = _normalizeMigrationSpec(spec);
-  if (!migrationId) throw new Error('migrationId is required');
-  if (!Number.isFinite(fromVersion) || fromVersion <= 0) throw new Error('fromVersion must be a positive number');
-  if (!Number.isFinite(toVersion) || toVersion <= 0) throw new Error('toVersion must be a positive number');
-  if (toVersion === fromVersion) throw new Error('toVersion must be different from fromVersion');
+  if (!migrationId) throw new OmUsageError('migrationId is required');
+  if (!Number.isFinite(fromVersion) || fromVersion <= 0) throw new OmUsageError('fromVersion must be a positive number');
+  if (!Number.isFinite(toVersion) || toVersion <= 0) throw new OmUsageError('toVersion must be a positive number');
+  if (toVersion === fromVersion) throw new OmUsageError('toVersion must be different from fromVersion');
 
   // Validate current schema state before entering write transaction.
   const state = await getSchemaState(runner);
   if (Number(state.currentVersion) !== fromVersion) {
-    throw new Error(`Schema currentVersion=${state.currentVersion} does not match fromVersion=${fromVersion}`);
+    throw new SchemaVersionError(`Schema currentVersion=${state.currentVersion} does not match fromVersion=${fromVersion}`, { currentVersion: state.currentVersion, fromVersion });
   }
 
   return _withWriteTxIfPossible(runner, async (txRunner) => {
@@ -5013,11 +5161,11 @@ async function applySchemaMigration(runner, spec) {
     // Apply steps.
     for (const step of steps) {
       const kind = _normalizeStepKind(step);
-      if (!kind) throw new Error('Migration step kind is required');
+      if (!kind) throw new OmUsageError('Migration step kind is required');
 
       if (kind === 'addType') {
         const typeName = String(step.typeName || step.type_name || '').trim();
-        if (!typeName) throw new Error('addType.typeName is required');
+        if (!typeName) throw new OmUsageError('addType.typeName is required');
         const desc = Object.prototype.hasOwnProperty.call(step, 'description') ? String(step.description || '') : '';
         await defineType(txRunner, typeName, desc || typeName);
         continue;
@@ -5028,9 +5176,9 @@ async function applySchemaMigration(runner, spec) {
         const attrName = String(step.attrName || step.attr_name || '').trim();
         const valueType = String(step.valueType || step.value_type || '').trim();
         const required = step.required === true;
-        if (!typeName) throw new Error('addAttribute.typeName is required');
-        if (!attrName) throw new Error('addAttribute.attrName is required');
-        if (!valueType) throw new Error('addAttribute.valueType is required');
+        if (!typeName) throw new OmUsageError('addAttribute.typeName is required');
+        if (!attrName) throw new OmUsageError('addAttribute.attrName is required');
+        if (!valueType) throw new OmUsageError('addAttribute.valueType is required');
         await defineAttribute(txRunner, typeName, attrName, valueType, required);
         continue;
       }
@@ -5039,9 +5187,9 @@ async function applySchemaMigration(runner, spec) {
         const typeNameRaw = String(step.typeName || step.type_name || '').trim();
         const fromAttrRaw = String(step.fromAttr || step.from_attr || '').trim();
         const toAttrRaw = String(step.toAttr || step.to_attr || '').trim();
-        if (!typeNameRaw) throw new Error('renameAttribute.typeName is required');
-        if (!fromAttrRaw) throw new Error('renameAttribute.fromAttr is required');
-        if (!toAttrRaw) throw new Error('renameAttribute.toAttr is required');
+        if (!typeNameRaw) throw new OmUsageError('renameAttribute.typeName is required');
+        if (!fromAttrRaw) throw new OmUsageError('renameAttribute.fromAttr is required');
+        if (!toAttrRaw) throw new OmUsageError('renameAttribute.toAttr is required');
 
         const typeName = await resolveType(txRunner, typeNameRaw);
         await _preloadAttrAliasesForType(txRunner, typeName);
@@ -5064,7 +5212,7 @@ async function applySchemaMigration(runner, spec) {
             .limit(1)
         );
         if (!defRows.length) {
-          throw new Error(`Cannot rename missing attribute '${typeName}.${fromAttr}'`);
+          throw new OmUsageError(`Cannot rename missing attribute '${typeName}.${fromAttr}'`);
         }
         const [valueType, required] = defRows[0];
         await defineAttribute(txRunner, typeName, toAttr, String(valueType), !!required);
@@ -5111,9 +5259,9 @@ async function applySchemaMigration(runner, spec) {
         const nextValueType = String(step.valueType || step.value_type || '').trim();
         const hasRequired = Object.prototype.hasOwnProperty.call(step, 'required');
         const nextRequired = step.required === true;
-        if (!typeNameRaw) throw new Error('changeAttribute.typeName is required');
-        if (!attrNameRaw) throw new Error('changeAttribute.attrName is required');
-        if (!nextValueType) throw new Error('changeAttribute.valueType is required');
+        if (!typeNameRaw) throw new OmUsageError('changeAttribute.typeName is required');
+        if (!attrNameRaw) throw new OmUsageError('changeAttribute.attrName is required');
+        if (!nextValueType) throw new OmUsageError('changeAttribute.valueType is required');
 
         const typeName = await resolveType(txRunner, typeNameRaw);
         await _preloadAttrAliasesForType(txRunner, typeName);
@@ -5137,14 +5285,14 @@ async function applySchemaMigration(runner, spec) {
             .limit(1)
         );
         if (!currentDefRows.length) {
-          throw new Error(`Cannot change missing attribute '${typeName}.${attrName}'`);
+          throw new OmUsageError(`Cannot change missing attribute '${typeName}.${attrName}'`);
         }
         const [required0] = currentDefRows[0];
         await defineAttribute(txRunner, typeName, attrName, nextValueType, hasRequired ? nextRequired : !!required0);
         continue;
       }
 
-      throw new Error(`Unsupported migration step kind '${kind}'`);
+      throw new MigrationStepError(`Unsupported migration step kind '${kind}'`, { stepKind: kind });
     }
 
     // Snapshot + checksum for toVersion.
@@ -5262,8 +5410,8 @@ function _getSnapshotTableRows(snapshot, tableKey, legacyKey, rootKey) {
 async function _replaceStoredRelation(runner, relationName, headVars, schemaText, rows) {
   const vars = Array.isArray(headVars) ? headVars : [];
   const schema = String(schemaText || '').trim();
-  if (!vars.length) throw new Error('headVars is required');
-  if (!schema) throw new Error('schemaText is required');
+  if (!vars.length) throw new OmUsageError('headVars is required');
+  if (!schema) throw new OmUsageError('schemaText is required');
 
   const script = `
 ?[${vars.join(', ')}] <- $rows
@@ -5294,7 +5442,7 @@ function _formatRollbackDiagnosticsSummary(diagnostics) {
 
 async function _rollbackSchemaInsideBehaviorGate(runner, targetVersion, options, cacheRunner) {
   const tv = Number(targetVersion);
-  if (!Number.isFinite(tv) || tv <= 0) throw new Error('targetVersion must be a positive number');
+  if (!Number.isFinite(tv) || tv <= 0) throw new OmUsageError('targetVersion must be a positive number');
 
   const opts = options && typeof options === 'object' ? options : {};
   const strict = opts.strict !== false;
@@ -5323,7 +5471,7 @@ async function _rollbackSchemaInsideBehaviorGate(runner, targetVersion, options,
 
   const snapshot = await readSchemaSnapshot(runner, tv);
   if (!snapshot) {
-    throw new Error(`Missing schema snapshot for version=${tv}; cannot rollback`);
+    throw new SchemaVersionError(`Missing schema snapshot for version=${tv}; cannot rollback`, { code: 'MISSING_SNAPSHOT', version: tv });
   }
 
   const behaviorPresent = Object.prototype.hasOwnProperty.call(snapshot, 'behavior');
@@ -5578,7 +5726,7 @@ function invalidateAliasCache(runner) {
 
 function _requireAliasName(value, name) {
   const normalized = String(value || '').trim();
-  if (!normalized) throw new Error(`${name} is required`);
+  if (!normalized) throw new OmUsageError(`${name} is required`);
   return normalized;
 }
 
@@ -5828,7 +5976,7 @@ async function _preloadAttrAliasesForType(runner, canonicalTypeName) {
 
 async function resolveType(runner, typeName) {
   const start = String(typeName || '').trim();
-  if (!start) throw new Error('typeName is required');
+  if (!start) throw new OmUsageError('typeName is required');
   const cache = _getAliasCacheForRunner(runner);
   if (cache && cache.typeFinal.has(start)) return cache.typeFinal.get(start);
 
@@ -5867,7 +6015,7 @@ async function resolveType(runner, typeName) {
 
 async function resolveRel(runner, relName) {
   const start = String(relName || '').trim();
-  if (!start) throw new Error('relName is required');
+  if (!start) throw new OmUsageError('relName is required');
   const cache = _getAliasCacheForRunner(runner);
   if (cache && cache.relFinal.has(start)) return cache.relFinal.get(start);
 
@@ -5906,7 +6054,7 @@ async function resolveRel(runner, relName) {
 
 async function _resolveAttrForCanonicalType(runner, canonicalTypeName, attrName) {
   const start = String(attrName || '').trim();
-  if (!start) throw new Error('attrName is required');
+  if (!start) throw new OmUsageError('attrName is required');
   const cache = _getAliasCacheForRunner(runner);
   if (cache) {
     if (!cache.attrFinalByType.has(canonicalTypeName)) cache.attrFinalByType.set(canonicalTypeName, new Map());
@@ -5951,8 +6099,8 @@ async function _resolveAttrForCanonicalType(runner, canonicalTypeName, attrName)
 async function resolveAttr(runner, typeName, attrName) {
   const tn0 = String(typeName || '').trim();
   const an0 = String(attrName || '').trim();
-  if (!tn0) throw new Error('typeName is required');
-  if (!an0) throw new Error('attrName is required');
+  if (!tn0) throw new OmUsageError('typeName is required');
+  if (!an0) throw new OmUsageError('attrName is required');
   const tn = await resolveType(runner, tn0);
   return _resolveAttrForCanonicalType(runner, tn, an0);
 }
@@ -6182,7 +6330,7 @@ async function defineType(runner, name, description, options) {
   if (parentType) {
     const parentExists = await _typeExists(runner, parentType);
     if (!parentExists) {
-      throw new Error(`Parent type '${parentType}' does not exist`);
+      throw new OmUsageError(`Parent type '${parentType}' does not exist`);
     }
     // Circular inheritance detection: walk parent's ancestors
     const parentAncestors = await _getAncestorList(runner, parentType);
@@ -6195,7 +6343,7 @@ async function defineType(runner, name, description, options) {
     for (const mixinName of mixins) {
       const mixinExists = await _mixinExists(runner, mixinName);
       if (!mixinExists) {
-        throw new Error(`Mixin '${mixinName}' does not exist`);
+        throw new OmUsageError(`Mixin '${mixinName}' does not exist`);
       }
     }
   }
@@ -6359,21 +6507,17 @@ async function defineAttribute(runner, typeName, attrName, valueType, required =
   const canonicalAttrName = await _resolveAttrForCanonicalType(runner, canonicalTypeName, attrName);
 
   if (!ALLOWED_VALUE_TYPES.has(valueType)) {
-    throw new Error(`Unsupported attribute value type '${valueType}'`);
+    throw new OmUsageError(`Unsupported attribute value type '${valueType}'`);
   }
 
   const inheritedDefs = await _getInheritedAttributeDefinitions(runner, canonicalTypeName);
   const inherited = inheritedDefs.get(canonicalAttrName);
   if (inherited) {
     if (inherited.valueType !== valueType) {
-      throw new Error(
-        `Cannot change value_type of '${canonicalAttrName}' (inherited as ${inherited.valueType})`
-      );
+      throw new OmUsageError(`Cannot change value_type of '${canonicalAttrName}' (inherited as ${inherited.valueType})`);
     }
     if (inherited.required && !required) {
-      throw new Error(
-        `Cannot loosen required constraint of '${canonicalAttrName}' (inherited as required)`
-      );
+      throw new OmUsageError(`Cannot loosen required constraint of '${canonicalAttrName}' (inherited as required)`);
     }
   }
 
@@ -6413,25 +6557,21 @@ function _normalizeRelMeta(meta) {
   if (raw.cardinality !== undefined && raw.cardinality !== null && String(raw.cardinality).trim() !== '') {
     const value = String(raw.cardinality).trim();
     if (!REL_META_CARDINALITIES.has(value)) {
-      throw new Error(
-        `rel meta cardinality must be one of ${[...REL_META_CARDINALITIES].join(', ')}, got '${value}'`
-      );
+      throw new OmUsageError(`rel meta cardinality must be one of ${[...REL_META_CARDINALITIES].join(', ')}, got '${value}'`);
     }
     out.cardinality = value;
   }
   if (raw.role !== undefined && raw.role !== null && String(raw.role).trim() !== '') {
     const value = String(raw.role).trim();
     if (!REL_META_ROLES.has(value)) {
-      throw new Error(`rel meta role must be one of ${[...REL_META_ROLES].join(', ')}, got '${value}'`);
+      throw new OmUsageError(`rel meta role must be one of ${[...REL_META_ROLES].join(', ')}, got '${value}'`);
     }
     out.role = value;
   }
   if (raw.on_delete !== undefined && raw.on_delete !== null && String(raw.on_delete).trim() !== '') {
     const value = String(raw.on_delete).trim();
     if (!REL_META_ON_DELETE.has(value)) {
-      throw new Error(
-        `rel meta on_delete must be one of ${[...REL_META_ON_DELETE].join(', ')}, got '${value}'`
-      );
+      throw new OmUsageError(`rel meta on_delete must be one of ${[...REL_META_ON_DELETE].join(', ')}, got '${value}'`);
     }
     out.on_delete = value;
   }
@@ -6493,10 +6633,10 @@ async function listRelationsByRole(runner, roles) {
   const wanted = (Array.isArray(roles) ? roles : [roles])
     .map((r) => String(r || '').trim())
     .filter(Boolean);
-  if (!wanted.length) throw new Error('listRelationsByRole requires at least one role');
+  if (!wanted.length) throw new OmUsageError('listRelationsByRole requires at least one role');
   for (const role of wanted) {
     if (!REL_META_ROLES.has(role)) {
-      throw new Error(`role must be one of ${[...REL_META_ROLES].join(', ')}, got '${role}'`);
+      throw new OmUsageError(`role must be one of ${[...REL_META_ROLES].join(', ')}, got '${role}'`);
     }
   }
   const roleSet = new Set(wanted);
@@ -6589,21 +6729,17 @@ async function deriveRelationSwap(runner, options) {
   const fromId = String(opts.fromId || '').trim();
   const relName = String(opts.relName || '').trim();
   const toId = String(opts.toId || '').trim();
-  if (!fromId) throw new Error('deriveRelationSwap requires fromId');
-  if (!relName) throw new Error('deriveRelationSwap requires relName');
-  if (!toId) throw new Error('deriveRelationSwap requires toId');
+  if (!fromId) throw new OmUsageError('deriveRelationSwap requires fromId');
+  if (!relName) throw new OmUsageError('deriveRelationSwap requires relName');
+  if (!toId) throw new OmUsageError('deriveRelationSwap requires toId');
 
   const canonicalRelName = await resolveRel(runner, relName);
   const meta = await getRelationMeta(runner, canonicalRelName);
   if (!meta || !meta.cardinality) {
-    throw new Error(
-      `Relation '${canonicalRelName}' declares no cardinality; owner swap cannot be derived`
-    );
+    throw new OmUsageError(`Relation '${canonicalRelName}' declares no cardinality; owner swap cannot be derived`);
   }
   if (meta.cardinality !== 'many_to_one' && meta.cardinality !== 'one_to_one') {
-    throw new Error(
-      `Relation '${canonicalRelName}' is ${meta.cardinality}; owner swap derivation only applies to many_to_one / one_to_one`
-    );
+    throw new OmUsageError(`Relation '${canonicalRelName}' is ${meta.cardinality}; owner swap derivation only applies to many_to_one / one_to_one`);
   }
 
   const neighbors = await getNeighbors(runner, fromId, canonicalRelName, 'outgoing');
@@ -6626,7 +6762,7 @@ async function deriveRelationSwap(runner, options) {
 async function applyRelationSwap(runner, plan) {
   const p = plan && typeof plan === 'object' ? plan : {};
   if (!p.fromId || !p.relName || !p.toId) {
-    throw new Error('applyRelationSwap requires a plan with fromId / relName / toId');
+    throw new OmUsageError('applyRelationSwap requires a plan with fromId / relName / toId');
   }
   for (const oldTarget of Array.isArray(p.unlink) ? p.unlink : []) {
     await unlinkEntities(runner, p.fromId, p.relName, oldTarget);
@@ -6671,20 +6807,31 @@ async function defineRelation(runner, relName, fromType, toType, directed = true
 async function createEntity(runner, id, typeName, label) {
   const canonicalTypeName = await resolveType(runner, typeName);
   if (!(await _typeExists(runner, canonicalTypeName))) {
-    throw new Error(`Type '${canonicalTypeName}' does not exist`);
+    throw new TypeNotFoundError(canonicalTypeName);
   }
-  await runDslRows(
-    runner,
-    query()
-      .input({ id: param('id', id), type_name: param('type_name', canonicalTypeName), label: param('label', label) })
-      .insert('om_entity', ['id'], ['type_name', 'label'])
-  );
+  try {
+    await runDslRows(
+      runner,
+      query()
+        .input({ id: param('id', id), type_name: param('type_name', canonicalTypeName), label: param('label', label) })
+        .insert('om_entity', ['id'], ['type_name', 'label'])
+    );
+  } catch (err) {
+    // 重复主键在 Cozo 侧只报 `transact::assertion_failure`，message 是
+    // `"when executing against relation 'om_entity'"` —— 无 id、无类型、无操作。
+    // 只有本函数知道它刚做的是「insert 到 om_entity」，所以只有这里能准确判定语义；
+    // 让调用方翻译，等于让每个调用方都去猜底层引擎的私有措辞。
+    if (isAssertionFailure(err)) {
+      throw new EntityAlreadyExistsError(id, canonicalTypeName, err);
+    }
+    throw err;
+  }
 }
 
 async function upsertEntity(runner, id, typeName, label) {
   const canonicalTypeName = await resolveType(runner, typeName);
   if (!(await _typeExists(runner, canonicalTypeName))) {
-    throw new Error(`Type '${canonicalTypeName}' does not exist`);
+    throw new TypeNotFoundError(canonicalTypeName);
   }
   await runDslRows(
     runner,
@@ -6696,7 +6843,7 @@ async function upsertEntity(runner, id, typeName, label) {
 
 async function deleteEntity(runner, entityId) {
   const id = String(entityId || '').trim();
-  if (!id) throw new Error('entityId is required');
+  if (!id) throw new OmUsageError('entityId is required');
 
   await _withWriteTxIfPossible(runner, async (txRunner) => {
     // Physical deletion removes every temporal fact, not only the @ NOW projection.
@@ -6744,7 +6891,7 @@ async function getEntityType(runner, entityId) {
       .limit(1)
   );
   if (!rows.length) {
-    throw new Error(`Entity '${entityId}' does not exist`);
+    throw new EntityNotFoundError(entityId);
   }
   const stored = rows[0][0];
   return resolveType(runner, stored);
@@ -6842,24 +6989,20 @@ async function validatePropertyType(runner, entityId, attrName, value) {
   const definitions = await getAttributeDefinitions(runner, typeName);
   const definition = definitions.get(canonicalAttrName);
   if (!definition) {
-    throw new Error(`Attribute '${canonicalAttrName}' is not defined for type '${typeName}'`);
+    throw new AttributeNotDefinedError(typeName, canonicalAttrName);
   }
 
   if (definition.valueType === 'Validity') {
     const normalized = _normalizeValidityInput(value);
     if (!normalized) {
-      throw new Error(
-        `Type mismatch: attribute '${canonicalAttrName}' expects Validity, got ${inferValueType(value)}`
-      );
+      throw new OmUsageError(`Type mismatch: attribute '${canonicalAttrName}' expects Validity, got ${inferValueType(value)}`);
     }
     return;
   }
 
   const actualType = inferValueType(value);
   if (definition.valueType !== actualType) {
-    throw new Error(
-      `Type mismatch: attribute '${canonicalAttrName}' expects ${definition.valueType}, got ${actualType}`
-    );
+    throw new OmUsageError(`Type mismatch: attribute '${canonicalAttrName}' expects ${definition.valueType}, got ${actualType}`);
   }
 }
 
@@ -6885,7 +7028,7 @@ async function setProperty(runner, entityId, attrName, value, options) {
       ? await _resolveComputedDef(txRunner, canonicalTypeName, rawAttrName).catch(() => null)
       : null;
     if (computedDefCanonical || computedDefRaw) {
-      throw new Error(`Cannot set computed property '${String(canonicalAttrName)}'`);
+      throw new OmUsageError(`Cannot set computed property '${String(canonicalAttrName)}'`);
     }
 
     await validatePropertyType(txRunner, entityId, canonicalAttrName, value);
@@ -6895,7 +7038,7 @@ async function setProperty(runner, entityId, attrName, value, options) {
     if (def && def.valueType === 'Validity') {
       const normalized = _normalizeValidityInput(value);
       if (!normalized) {
-        throw new Error(`Invalid Validity value for '${String(canonicalAttrName)}'`);
+        throw new OmUsageError(`Invalid Validity value for '${String(canonicalAttrName)}'`);
       }
       await runDslRows(
         txRunner,
@@ -6929,7 +7072,7 @@ async function setProperty(runner, entityId, attrName, value, options) {
     if (!skipConstraints) {
       const result = await validateConstraints(txRunner, entityId, { types: ['conditional'] });
       if (!result.valid) {
-        throw new Error(result.errors.join('; '));
+        throw new ConstraintViolationError(_firstConstraintName(result.errors), result.errors.join('; '));
       }
     }
   });
@@ -7011,7 +7154,7 @@ function _parseTimestampToMicros(value, fieldName) {
 
   const ms = Date.parse(s);
   if (!Number.isFinite(ms)) {
-    throw new Error(`${fieldName} must be a timestamp string (RFC3339 or YYYY-MM[/DD])`);
+    throw new OmUsageError(`${fieldName} must be a timestamp string (RFC3339 or YYYY-MM[/DD])`);
   }
   return ms * 1000;
 }
@@ -7019,14 +7162,14 @@ function _parseTimestampToMicros(value, fieldName) {
 async function getPropertyHistory(runner, entityId, attrName, options) {
   const id = String(entityId || '').trim();
   const an = String(attrName || '').trim();
-  if (!id) throw new Error('entityId is required');
-  if (!an) throw new Error('attrName is required');
+  if (!id) throw new OmUsageError('entityId is required');
+  if (!an) throw new OmUsageError('attrName is required');
 
   const opts = options && typeof options === 'object' ? options : {};
   const fromUs = _parseTimestampToMicros(opts.from, 'from');
   const toUs = _parseTimestampToMicros(opts.to, 'to');
   if (fromUs != null && toUs != null && fromUs > toUs) {
-    throw new Error('from must be <= to');
+    throw new OmUsageError('from must be <= to');
   }
 
   const filters = [];
@@ -7059,7 +7202,7 @@ async function getPropertyHistory(runner, entityId, attrName, options) {
 function _normalizeAsOfTimestamp(value, fieldName) {
   const raw = String(value || '').trim();
   if (!raw) {
-    throw new Error(`${fieldName} is required`);
+    throw new OmUsageError(`${fieldName} is required`);
   }
 
   // Allow coarse-grained inputs in addition to RFC3339.
@@ -7072,7 +7215,7 @@ function _normalizeAsOfTimestamp(value, fieldName) {
 
   const ms = Date.parse(s);
   if (!Number.isFinite(ms)) {
-    throw new Error(`${fieldName} must be a timestamp string (RFC3339 or YYYY-MM[/DD])`);
+    throw new OmUsageError(`${fieldName} must be a timestamp string (RFC3339 or YYYY-MM[/DD])`);
   }
   return new Date(ms).toISOString();
 }
@@ -7081,8 +7224,8 @@ async function getPropertyAsOf(runner, entityId, attrName, timestamp) {
   runner = await _captureBehaviorResolutionScope(runner);
   const id = String(entityId || '').trim();
   const an = String(attrName || '').trim();
-  if (!id) throw new Error('entityId is required');
-  if (!an) throw new Error('attrName is required');
+  if (!id) throw new OmUsageError('entityId is required');
+  if (!an) throw new OmUsageError('attrName is required');
   const asOf = _normalizeAsOfTimestamp(timestamp, 'timestamp');
 
   return _getPropertyAtNormalizedAsOf(runner, id, an, asOf);
@@ -7160,7 +7303,7 @@ async function validateRelation(runner, fromId, relName, toId) {
       .limit(1)
   );
   if (!rows.length) {
-    throw new Error(`Relation '${canonicalRelName}' is not defined`);
+    throw new RelationNotDefinedError(canonicalRelName);
   }
   const [expectedFromTypeRaw, expectedToTypeRaw, directedRaw] = rows[0];
   const expectedFromType = await resolveType(runner, expectedFromTypeRaw);
@@ -7171,9 +7314,7 @@ async function validateRelation(runner, fromId, relName, toId) {
     await isSubtypeOf(runner, fromType, expectedToType) &&
     await isSubtypeOf(runner, toType, expectedFromType);
   if ((!fromOk || !toOk) && !reverseOk) {
-    throw new Error(
-      `Relation '${canonicalRelName}' expects ${expectedFromType} -> ${expectedToType}, got ${fromType} -> ${toType}`
-    );
+    throw new OmUsageError(`Relation '${canonicalRelName}' expects ${expectedFromType} -> ${expectedToType}, got ${fromType} -> ${toType}`);
   }
 }
 
@@ -7222,7 +7363,7 @@ async function linkEntities(runner, fromId, relName, toId, props = {}, options) 
     if (!skipConstraints) {
       const result = await validateConstraints(txRunner, fromId, { types: ['cross-entity'] });
       if (!result.valid) {
-        throw new Error(result.errors.join('; '));
+        throw new ConstraintViolationError(_firstConstraintName(result.errors), result.errors.join('; '));
       }
     }
   });
@@ -7265,7 +7406,7 @@ async function unlinkEntities(runner, fromId, relName, toId, options) {
     if (!skipConstraints) {
       const result = await validateConstraints(txRunner, fromId, { types: ['cross-entity'] });
       if (!result.valid) {
-        throw new Error(result.errors.join('; '));
+        throw new ConstraintViolationError(_firstConstraintName(result.errors), result.errors.join('; '));
       }
     }
   });
@@ -7285,7 +7426,7 @@ async function getAllProperties(runner, entityId) {
 
 async function _canonicalizeStoredPropertiesForType(runner, canonicalTypeName, rawProperties) {
   const tn = String(canonicalTypeName || '').trim();
-  if (!tn) throw new Error('Type name is required');
+  if (!tn) throw new OmUsageError('Type name is required');
   const raw = rawProperties && typeof rawProperties === 'object' ? rawProperties : {};
 
   await _preloadAttrAliasesForType(runner, tn);
@@ -7372,7 +7513,7 @@ async function validateEntity(runner, entityId) {
 async function finalizeEntity(runner, entityId) {
   const result = await validateEntity(runner, entityId);
   if (!result.valid) {
-    throw new Error(`Entity '${entityId}' validation failed: ${result.errors.join('; ')}`);
+    throw new OmUsageError(`Entity '${entityId}' validation failed: ${result.errors.join('; ')}`);
   }
 }
 
@@ -7428,7 +7569,7 @@ async function getEntityView(runner, entityId) {
 async function getEntityViewAsOf(runner, entityId, timestamp) {
   runner = await _captureBehaviorResolutionScope(runner);
   const id = String(entityId || '').trim();
-  if (!id) throw new Error('entityId is required');
+  if (!id) throw new OmUsageError('entityId is required');
   const asOf = _normalizeAsOfTimestamp(timestamp, 'timestamp');
 
   const entityRows = await runDslRows(
@@ -7618,7 +7759,7 @@ async function getNeighbors(runner, entityId, relName, direction) {
 
 async function getNeighborsAsOf(runner, entityId, relName, timestamp) {
   const id = String(entityId || '').trim();
-  if (!id) throw new Error('entityId is required');
+  if (!id) throw new OmUsageError('entityId is required');
   const asOf = _normalizeAsOfTimestamp(timestamp, 'timestamp');
 
   return _getNeighborsAtNormalizedAsOf(runner, id, relName, asOf);
@@ -7741,8 +7882,8 @@ async function _getNeighborsAtNormalizedAsOf(runner, id, relName, asOf) {
 async function getEdgeHistory(runner, fromId, relName, toId, options) {
   const fid = String(fromId || '').trim();
   const rn = String(relName || '').trim();
-  if (!fid) throw new Error('fromId is required');
-  if (!rn) throw new Error('relName is required');
+  if (!fid) throw new OmUsageError('fromId is required');
+  if (!rn) throw new OmUsageError('relName is required');
 
   // Backward compatible overload:
   // - getEdgeHistory(runner, fromId, relName)
@@ -7763,7 +7904,7 @@ async function getEdgeHistory(runner, fromId, relName, toId, options) {
   const fromUs = _parseTimestampToMicros(optionsObj.from, 'from');
   const toUs = _parseTimestampToMicros(optionsObj.to, 'to');
   if (fromUs != null && toUs != null && fromUs > toUs) {
-    throw new Error('from must be <= to');
+    throw new OmUsageError('from must be <= to');
   }
 
   const filters = [];
@@ -7881,7 +8022,7 @@ async function aggregateByType(runner, typeName, attrName, op, options) {
   const normalizedOp = String(op || '').toLowerCase();
   const allowedOps = new Set(['sum', 'avg', 'min', 'max', 'count']);
   if (!allowedOps.has(normalizedOp)) {
-    throw new Error(`Unsupported aggregate op '${op}'`);
+    throw new OmUsageError(`Unsupported aggregate op '${op}'`);
   }
 
   const opts = options || {};
@@ -7931,7 +8072,7 @@ async function aggregateByType(runner, typeName, attrName, op, options) {
 function normalizeDirection(direction) {
   const normalized = String(direction || 'outgoing').toLowerCase();
   if (!['outgoing', 'incoming', 'both'].includes(normalized)) {
-    throw new Error(`Unsupported direction '${direction}'`);
+    throw new OmUsageError(`Unsupported direction '${direction}'`);
   }
   return normalized;
 }
@@ -8040,7 +8181,7 @@ async function walkImpactGraph(runner, {
 }) {
   const rootView = await getEntityView(runner, rootId);
   if (!rootView) {
-    throw new Error(`Root entity '${rootId}' does not exist`);
+    throw new EntityNotFoundError(rootId);
   }
 
   const normalizedDirection = normalizeDirection(direction);
@@ -8144,7 +8285,7 @@ async function walkImpactGraph(runner, {
 async function impactAnalysis(runner, input = {}) {
   const rootId = input.rootId;
   if (!rootId) {
-    throw new Error('impactAnalysis requires input.rootId');
+    throw new OmUsageError('impactAnalysis requires input.rootId');
   }
 
   const maxDepth = Number.isInteger(input.maxDepth) && input.maxDepth >= 0 ? input.maxDepth : 2;
@@ -8181,7 +8322,7 @@ async function impactAnalysis(runner, input = {}) {
 async function ownershipTree(runner, input = {}) {
   const rootId = input.rootId;
   if (!rootId) {
-    throw new Error('ownershipTree requires input.rootId');
+    throw new OmUsageError('ownershipTree requires input.rootId');
   }
 
   const ownerRelNames = Array.isArray(input.ownerRelNames) && input.ownerRelNames.length
@@ -8292,7 +8433,7 @@ async function ingestBatch(db, batch, options = {}) {
   const scope = _captureResolutionScope(db);
   const rawDb = scope.runner;
   if (typeof rawDb.multiTransact !== 'function') {
-    throw new Error('ingestBatch requires a CozoDb instance with multiTransact(write)');
+    throw new OmUsageError('ingestBatch requires a CozoDb instance with multiTransact(write)');
   }
 
   const entities = Array.isArray(batch && batch.entities) ? batch.entities : [];
@@ -8357,7 +8498,7 @@ function _normalizeExistentialDirection(direction) {
   const d = String(direction == null || direction === '' ? 'out' : direction).toLowerCase();
   if (d === 'out' || d === 'outgoing') return 'out';
   if (d === 'in' || d === 'incoming') return 'in';
-  throw new Error(`exists.direction must be 'out' or 'in', got '${direction}'`);
+  throw new OmUsageError(`exists.direction must be 'out' or 'in', got '${direction}'`);
 }
 
 async function _relDefExists(runner, canonicalRelName) {
@@ -8378,44 +8519,44 @@ async function _relDefExists(runner, canonicalRelName) {
 
 async function _normalizeExistentialSpec(runner, spec) {
   if (!spec || typeof spec !== 'object') {
-    throw new Error('Existential rule spec must be an object');
+    throw new OmUsageError('Existential rule spec must be an object');
   }
 
   const forEach = spec.forEach;
   if (!forEach || typeof forEach !== 'object') {
-    throw new Error('Existential rule spec requires forEach.type');
+    throw new OmUsageError('Existential rule spec requires forEach.type');
   }
   const bodyTypeRaw = String(forEach.type || '').trim();
   if (!bodyTypeRaw) {
-    throw new Error('Existential rule spec requires forEach.type');
+    throw new OmUsageError('Existential rule spec requires forEach.type');
   }
 
   const exists = spec.exists;
   if (!exists || typeof exists !== 'object' || !String(exists.rel || '').trim()) {
-    throw new Error('Existential rule spec requires exists.rel');
+    throw new OmUsageError('Existential rule spec requires exists.rel');
   }
   if (!String(exists.toType || '').trim()) {
-    throw new Error('Existential rule spec requires exists.toType');
+    throw new OmUsageError('Existential rule spec requires exists.toType');
   }
 
   const mode = String(spec.mode == null || spec.mode === '' ? 'check' : spec.mode).trim();
   if (!EXISTENTIAL_RULE_MODES.has(mode)) {
-    throw new Error(`Existential rule mode must be one of ${[...EXISTENTIAL_RULE_MODES].join('/')}, got '${mode}'`);
+    throw new OmUsageError(`Existential rule mode must be one of ${[...EXISTENTIAL_RULE_MODES].join('/')}, got '${mode}'`);
   }
 
   const bodyType = await resolveType(runner, bodyTypeRaw);
   if (!(await _typeExists(runner, bodyType))) {
-    throw new Error(`Unknown type '${bodyType}' in forEach.type`);
+    throw new OmUsageError(`Unknown type '${bodyType}' in forEach.type`);
   }
 
   const relName = await resolveRel(runner, String(exists.rel).trim());
   if (!(await _relDefExists(runner, relName))) {
-    throw new Error(`Unknown relation '${relName}' in exists.rel`);
+    throw new OmUsageError(`Unknown relation '${relName}' in exists.rel`);
   }
 
   const toType = await resolveType(runner, String(exists.toType).trim());
   if (!(await _typeExists(runner, toType))) {
-    throw new Error(`Unknown type '${toType}' in exists.toType`);
+    throw new OmUsageError(`Unknown type '${toType}' in exists.toType`);
   }
 
   const direction = _normalizeExistentialDirection(exists.direction);
@@ -8423,23 +8564,23 @@ async function _normalizeExistentialSpec(runner, spec) {
   const where = [];
   if (forEach.where != null) {
     if (!Array.isArray(forEach.where)) {
-      throw new Error('forEach.where must be an array of { attr, op, value }');
+      throw new OmUsageError('forEach.where must be an array of { attr, op, value }');
     }
     for (const cond of forEach.where) {
       if (!cond || typeof cond !== 'object') {
-        throw new Error('forEach.where entries must be objects of { attr, op, value }');
+        throw new OmUsageError('forEach.where entries must be objects of { attr, op, value }');
       }
       const attrRaw = String(cond.attr || '').trim();
-      if (!attrRaw) throw new Error('forEach.where entries require attr');
+      if (!attrRaw) throw new OmUsageError('forEach.where entries require attr');
       const op = String(cond.op || '=').trim();
       if (!EXISTENTIAL_WHERE_OPS.has(op)) {
-        throw new Error(`forEach.where op must be one of ${[...EXISTENTIAL_WHERE_OPS].join(' ')}, got '${op}'`);
+        throw new OmUsageError(`forEach.where op must be one of ${[...EXISTENTIAL_WHERE_OPS].join(' ')}, got '${op}'`);
       }
       // undefined would be dropped by JSON persistence, leaving a stored
       // condition that silently never matches; require an explicit value
       // (null is a legal JSON value and stays allowed).
       if (!Object.prototype.hasOwnProperty.call(cond, 'value') || cond.value === undefined) {
-        throw new Error(`forEach.where entries require an explicit value (attr '${attrRaw}'); use null for a null comparison`);
+        throw new OmUsageError(`forEach.where entries require an explicit value (attr '${attrRaw}'); use null for a null comparison`);
       }
       const attr = await _resolveAttrForCanonicalType(runner, bodyType, attrRaw);
       where.push({ attr, op, value: cond.value });
@@ -8454,7 +8595,7 @@ async function _normalizeExistentialSpec(runner, spec) {
 
   if (spec.materialize != null) {
     if (typeof spec.materialize !== 'object') {
-      throw new Error('materialize must be an object');
+      throw new OmUsageError('materialize must be an object');
     }
     const mat = {};
     if (spec.materialize.labelTemplate != null) {
@@ -8462,7 +8603,7 @@ async function _normalizeExistentialSpec(runner, spec) {
     }
     if (spec.materialize.props != null) {
       if (typeof spec.materialize.props !== 'object' || Array.isArray(spec.materialize.props)) {
-        throw new Error('materialize.props must be an object');
+        throw new OmUsageError('materialize.props must be an object');
       }
       mat.props = spec.materialize.props;
     }
@@ -8474,7 +8615,7 @@ async function _normalizeExistentialSpec(runner, spec) {
 
 async function defineExistentialRule(runner, ruleName, spec) {
   const rn = String(ruleName || '').trim();
-  if (!rn) throw new Error('Rule name is required');
+  if (!rn) throw new OmUsageError('Rule name is required');
 
   const { normalized, mode } = await _normalizeExistentialSpec(runner, spec);
   const message = spec.message != null ? String(spec.message) : '';
@@ -8556,7 +8697,7 @@ async function _findExistentialViolations(runner, rule, asOf) {
   let whereAtoms = '';
   whereConds.forEach((cond, i) => {
     const op = _EXISTENTIAL_OP_TO_COZO[cond.op];
-    if (!op) throw new Error(`Unsupported where op '${cond.op}' in rule '${rule.ruleName}'`);
+    if (!op) throw new OmUsageError(`Unsupported where op '${cond.op}' in rule '${rule.ruleName}'`);
     params[`w_attr_${i}`] = cond.attr;
     params[`w_value_${i}`] = cond.value;
     whereAtoms += `,
@@ -8632,7 +8773,7 @@ async function applyExistentialRules(runner, options) {
   const opts = options && typeof options === 'object' ? options : {};
   const maxIterations = opts.maxIterations != null ? Number(opts.maxIterations) : 10;
   if (!Number.isFinite(maxIterations) || maxIterations < 1) {
-    throw new Error('maxIterations must be a positive number');
+    throw new OmUsageError('maxIterations must be a positive number');
   }
   const validTime = opts.validTime != null && opts.validTime !== '' ? String(opts.validTime) : '';
   const wanted = Array.isArray(opts.rules) && opts.rules.length
@@ -8925,6 +9066,19 @@ module.exports = {
   createOmRuntime,
   BehaviorUnresolvedError,
   BehaviorImportError,
+  // 错误契约（见 cozo-om.js 顶部的 "错误契约" 段）：
+  // 调用方只许判 `code`，不许匹配 message 措辞。
+  OmError,
+  EntityAlreadyExistsError,
+  EntityNotFoundError,
+  TypeNotFoundError,
+  AttributeNotDefinedError,
+  RelationNotDefinedError,
+  OmUsageError,
+  SchemaVersionError,
+  MigrationStepError,
+  ConstraintViolationError,
+  isAssertionFailure,
   registerConstraint,
   registerValidator,
   registerComputed,
