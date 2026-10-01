@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@elysiajs/cors": "^1.2.0",
-    "depa-ontology": "0.1.0",
-    "depa-processor": "file:../../../../depa-processor",
+    "depa-ontology": "0.1.1",
+    "depa-processor": "0.1.1",
     "elysia": "^1.2.25"
   }
 }
