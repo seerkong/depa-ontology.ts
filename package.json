@@ -22,6 +22,6 @@
     "test:inference:package": "node scripts/verify-inference-packages.js"
   },
   "devDependencies": {
-    "depa-cozo": "0.1.2"
+    "depa-cozo": "0.1.3"
   }
 }

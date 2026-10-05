@@ -1,7 +1,7 @@
 # depa-ontology
 
 `depa-ontology` contains the Depa object-model and ontology runtime. It deliberately
-does not contain native database loading: `depa-cozo@0.1.0` supplies `CozoDb` and
+does not contain native database loading: `depa-cozo@0.1.3` supplies `CozoDb` and
 `CozoTx`, while the independently publishable `depa-datalog` package supplies the
 portable CozoScript/Datalog query builder.
 

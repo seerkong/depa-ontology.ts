@@ -5,7 +5,7 @@
 | 包 | 可发布 | 职责 |
 | --- | --- | --- |
 | `depa-datalog` | 是 | 可移植的 CozoScript/Datalog 查询构造，无原生依赖 |
-| `depa-ontology` | 是 | 对象模型与本体运行时，聚合 `depa-datalog` 与 `depa-cozo@0.1.0` |
+| `depa-ontology` | 是 | 对象模型与本体运行时，聚合 `depa-datalog` 与 `depa-cozo@0.1.3` |
 | `depa-example-server` | 否 | Bun/Elysia 示例 API，通过 `depa-ontology` 展示 ontology、permission、governance 和 schema 能力 |
 | `depa-example-browser` | 否 | Vue/Vite 示例界面，并拥有 Playwright 配置、依赖和全部 e2e specs |
 
@@ -49,7 +49,7 @@ npm run dev:browser
 - browser 默认请求 `http://127.0.0.1:4175`；可以在启动或构建时用 `VITE_API_BASE` 覆盖，例如 `VITE_API_BASE=http://127.0.0.1:4175 npm run dev:browser`。
 - `npm run start:server` 以非 watch 模式启动 server；`npm run preview:browser` 预览 production build。
 
-`depa-cozo@0.1.0` 的当前 native package 仅支持 macOS arm64。因此，真实加载 CozoDB 的 ontology/server 测试和完整 e2e 需要在 macOS arm64 上运行；不触发 native 加载的 `depa-datalog` 测试与 browser 静态构建不受此约束。
+`depa-cozo@0.1.3` 的 native package 支持 macOS arm64、macOS x64 和 Windows x64。真实加载 CozoDB 的 ontology/server 测试需要对应平台的 `native/<platform>-<arch>/depa_cozo.node`；不触发 native 加载的 `depa-datalog` 测试与 browser 静态构建不受此约束。
 
 ## Reproducing unpublished inference candidates
 
